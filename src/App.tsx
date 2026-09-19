@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, lazy, Suspense } from "react";
 import {
   ArrowLeft,
   RotateCw,
@@ -35,28 +35,40 @@ import {
   MenuGroup,
   Contract,
 } from "./data";
-import StaffPage from "./StaffPage";
-import PartsPage from "./PartsPage";
 import { makeTheme } from "./theme";
-import CustomersPage from "./CustomersPage";
-import ContractsPage from "./ContractsPage";
-import NewContractWizard from "./NewContractWizard";
-import ContractView from "./ContractView";
-import CustomerReportsPage from "./CustomerReportsPage";
-import CsvUploadPage from "./CsvUploadPage";
-import MarketingFlyout from "./components/MarketingFlyout";
-import ScheduleManagementPage from "./components/ScheduleManagementPage";
-import ZonesPage from "./components/ZonesPage";
-import ChecklistSettingsPage from "./components/ChecklistSettingsPage";
-import CpanelSettingsPage from "./components/CpanelSettingsPage";
-import ServiceReportView from "./components/ServiceReportView";
-import ServiceForm from "./ServiceForm";
 import ContractRibbonBar from "./components/ContractRibbonBar";
 import WelcomeBanner from "./components/WelcomeBanner";
-import TechnicianMobileApp from "./components/mobile/TechnicianMobileApp";
 import SyncIndicator from "./components/SyncIndicator";
 import AndroidAppModal from "./components/AndroidAppModal";
-import CustomerPortalView from "./components/CustomerPortalView";
+
+// صفحه‌های سنگین به‌صورت تنبل (lazy) لود می‌شوند تا باندل اولیهٔ اپ کوچک بماند
+const StaffPage = lazy(() => import("./StaffPage"));
+const PartsPage = lazy(() => import("./PartsPage"));
+const CustomersPage = lazy(() => import("./CustomersPage"));
+const ContractsPage = lazy(() => import("./ContractsPage"));
+const NewContractWizard = lazy(() => import("./NewContractWizard"));
+const ContractView = lazy(() => import("./ContractView"));
+const CustomerReportsPage = lazy(() => import("./CustomerReportsPage"));
+const CsvUploadPage = lazy(() => import("./CsvUploadPage"));
+const ServiceForm = lazy(() => import("./ServiceForm"));
+const MarketingFlyout = lazy(() => import("./components/MarketingFlyout"));
+const ScheduleManagementPage = lazy(() => import("./components/ScheduleManagementPage"));
+const ZonesPage = lazy(() => import("./components/ZonesPage"));
+const ChecklistSettingsPage = lazy(() => import("./components/ChecklistSettingsPage"));
+const CpanelSettingsPage = lazy(() => import("./components/CpanelSettingsPage"));
+const TechnicianMobileApp = lazy(() => import("./components/mobile/TechnicianMobileApp"));
+const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
+
+function PageLoader({ label = "در حال بارگذاری…" }: { label?: string }) {
+  return (
+    <div className="flex flex-1 items-center justify-center py-24">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+        <span className="text-xs text-slate-500">{label}</span>
+      </div>
+    </div>
+  );
+}
 import { useContracts, useMarketingItems, appStore, MonthService } from "./store";
 import { useAuth } from "./contexts/AuthContext";
 import { checkForAppUpdates, APP_VERSION } from "./utils/appUpdater";
@@ -298,10 +310,12 @@ export default function App() {
   // ۱. اگر کاربر لاگین‌شده مشتری/طرف قرارداد است، منحصراً پرتال اختصاصی مشتریان (فقط‌خواندنی) را ببیند
   if (currentUserInfo?.role === "customer") {
     return (
-      <CustomerPortalView
-        customer={currentUserInfo}
-        onSignOut={() => signOut()}
-      />
+      <Suspense fallback={<PageLoader />}>
+        <CustomerPortalView
+          customer={currentUserInfo}
+          onSignOut={() => signOut()}
+        />
+      </Suspense>
     );
   }
 
@@ -314,31 +328,35 @@ export default function App() {
 
     if (!isTechOrStaff) {
       return (
-        <CustomerPortalView
-          customer={
-            currentUserInfo || {
-              id: "cust_guest",
-              name: "مشتری گرامی",
-              role: "customer",
+        <Suspense fallback={<PageLoader />}>
+          <CustomerPortalView
+            customer={
+              currentUserInfo || {
+                id: "cust_guest",
+                name: "مشتری گرامی",
+                role: "customer",
+              }
             }
-          }
-          onSignOut={() => signOut()}
-        />
+            onSignOut={() => signOut()}
+          />
+        </Suspense>
       );
     }
 
     return (
-      <TechnicianMobileApp
-        technician={{
-          name: currentUserInfo?.name || "محسن امامی برسری",
-          phone: currentUserInfo?.phone || "09192868509",
-          company: "شرکت آسمان‌سرا",
-        }}
-        onExitToDesktop={
-          currentUserInfo?.role === "admin" ? () => setMobileMode(false) : undefined
-        }
-        onSignOut={() => signOut()}
-      />
+      <Suspense fallback={<PageLoader />}>
+        <TechnicianMobileApp
+          technician={{
+            name: currentUserInfo?.name || "محسن امامی برسری",
+            phone: currentUserInfo?.phone || "09192868509",
+            company: "شرکت آسمان‌سرا",
+          }}
+          onExitToDesktop={
+            currentUserInfo?.role === "admin" ? () => setMobileMode(false) : undefined
+          }
+          onSignOut={() => signOut()}
+        />
+      </Suspense>
     );
   }
 
@@ -502,13 +520,21 @@ export default function App() {
                 t.border
               } ${t.chrome} shadow-[0_0_30px_rgba(0,0,0,.6)]`}
             >
-              <MarketingFlyout
-                t={t}
-                dark={dark}
-                onOpenItem={openMenuItem}
-                onClose={() => setOpenMenu(null)}
-                onShowToast={showToast}
-              />
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-16">
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+                  </div>
+                }
+              >
+                <MarketingFlyout
+                  t={t}
+                  dark={dark}
+                  onOpenItem={openMenuItem}
+                  onClose={() => setOpenMenu(null)}
+                  onShowToast={showToast}
+                />
+              </Suspense>
             </div>
           )}
 
@@ -605,6 +631,7 @@ export default function App() {
             className="flex min-w-0 flex-1 flex-col overflow-hidden"
             onClick={() => setOpenMenu(null)}
           >
+            <Suspense fallback={<PageLoader />}>
             {current?.kind === "schedule" ? (
               <ScheduleManagementPage
                 t={t}
@@ -742,6 +769,7 @@ export default function App() {
                 </div>
               </div>
             )}
+            </Suspense>
           </div>
         </div>
 

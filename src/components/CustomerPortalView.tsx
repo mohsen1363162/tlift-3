@@ -80,7 +80,7 @@ export default function CustomerPortalView({ customer, onSignOut }: CustomerPort
 
   // دریافت جزئیات خدمات و پرداختی‌های قرارداد
   const contractDetails = useMemo(() => {
-    if (!activeContract) return { months: [], payments: [] };
+    if (!activeContract) return { months: [] as MonthService[], payments: [] as PaymentRecord[] };
     return appStore.getContractDetails(activeContract.id);
   }, [activeContract]);
 
@@ -549,7 +549,7 @@ export default function CustomerPortalView({ customer, onSignOut }: CustomerPort
                             {((p.amount || 0) / 10).toLocaleString("fa-IR")}
                           </td>
                           <td className="p-3 text-slate-700">{p.method || p.paymentType || "واریز بانکی"}</td>
-                          <td className="p-3 text-slate-500 font-mono">{p.refNo || "CSH-5475-01"}</td>
+                          <td className="p-3 text-slate-500 font-mono">{p.ref || "CSH-5475-01"}</td>
                           <td className="p-3">
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                               <CheckCircle2 size={11} />

@@ -1,73 +1,108 @@
-# Welcome to your Lovable project
+# تلیفت همراه — سامانهٔ آسمان سرا
 
-## Project info
+سامانهٔ مدیریت سرویس و نگهداری آسانسور شرکت آسمان سرا (emami-asemansara.ir):
+پنل مدیریت قراردادها، مشتریان و زمان‌بندی سرویس‌ها + نمای موبایل تکنسین + پرتال مشتری — به‌صورت PWA راست‌به‌چپ.
 
-**URL**: https://lovable.dev/projects/e75419bb-285d-469c-a390-382dd0bbdc14
+## امکانات اصلی
 
-## How can I edit this code?
+- مدیریت قراردادها، مشتریان، سرویس‌های ماهانه و پرداخت‌ها
+- ویزارد ایجاد قرارداد جدید و گزارش‌گیری (خروجی Excel/PDF/چاپ)
+- زمان‌بندی سرویس‌ها و خرابی‌ها به تفکیک منطقه و سرویسکار
+- نمای موبایل مخصوص تکنسین (ثبت سرویس، آفلاین‌کاری و صف همگام‌سازی)
+- پرتال مشتری (مشاهدهٔ وضعیت قرارداد، مالی و ثبت خرابی)
+- همگام‌سازی ابری با Supabase با پشتیبانی کامل از حالت آفلاین
+- PWA قابل نصب روی اندروید/دسکتاپ با به‌روزرسانی خودکار
 
-There are several ways of editing your application.
+## فناوری‌ها
 
-**Use Lovable**
+| لایه | فناوری |
+|---|---|
+| فرانت‌اند | React 18 + TypeScript + Vite 5 |
+| استایل | Tailwind CSS v3 |
+| ذخیره‌سازی | localStorage (آفلاین) + Supabase (همگام‌سازی) |
+| استقرار | خروجی cPanel (زیپ `public_html`) |
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/e75419bb-285d-469c-a390-382dd0bbdc14) and start prompting.
+## پیش‌نیازها
 
-Changes made via Lovable will be committed automatically to this repo.
+- Node.js نسخهٔ ۲۰ یا بالاتر
+- برای بیلد کامل: Python 3 (اسکریپت بسته‌بندی خروجی سی‌پنل)
 
-**Use your preferred IDE**
+## نصب و اجرا
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+```bash
+# نصب وابستگی‌ها
+npm ci
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# اجرای سرور توسعه روی پورت 3000
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## دستورها
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+| دستور | توضیح |
+|---|---|
+| `npm run dev` | سرور توسعه (هاست 0.0.0.0، پورت 3000) |
+| `npm run build` | بیلد پروداکشن + ساخت `public_html.zip` برای سی‌پنل |
+| `npm run build:dev` | بیلد با حالت development |
+| `npm run lint` | ESLint |
+| `npm run preview` | پیش‌نمایش بیلد پروداکشن |
 
-**Use GitHub Codespaces**
+## متغیرهای محیطی و تفکیک دیتابیس توسعه از پروداکشن
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+> ⚠️ **مهم:** اگر متغیرها خالی باشند، اپ به‌طور پیش‌فرض به دیتابیس اصلی (پروداکشن) وصل می‌شود
+> و هر داده‌ای که در توسعه ثبت کنید روی داده‌های واقعی ذخیره خواهد شد.
 
-## What technologies are used for this project?
+روش پیشنهادی برای توسعهٔ امن:
 
-This project is built with:
+1. یک پروژهٔ رایگان در [supabase.com](https://supabase.com) بسازید (مثلاً با نام `tlift-dev`).
+2. ساختار جداول را از پوشهٔ `supabase/` در پروژهٔ خود بسازید.
+3. مقادیر را در `.env` (کپی از `.env.example`) وارد کنید — فایل‌های `.env` و `.env.local` در گیت نادیده گرفته می‌شوند:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```
+VITE_SUPABASE_URL=https://YOUR-DEV-PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=کلید-عمومی-پروژه-توسعه
+```
 
-## How can I deploy this project?
+فایل `.env.development` به‌عنوان قالب راهنما در مخزن هست. در محیط توسعه (`npm run dev`)
+اگر متغیرها خالی باشند، در کنسول مرورگر هشدار اتصال به پروداکشن نمایش داده می‌شود.
 
-Simply open [Lovable](https://lovable.dev/projects/e75419bb-285d-469c-a390-382dd0bbdc14) and click on Share -> Publish.
+## ساختار پروژه
 
-## Can I connect a custom domain to my Lovable project?
+```
+src/
+├── App.tsx                 # پوستهٔ اصلی (نوار ابزار، تب‌ها، ریبون)
+├── store.ts                # استور مرکزی داده‌ها (قراردادها، مشتری‌ها، پرداخت‌ها)
+├── cloudSync.ts            # همگام‌سازی ابری با صف آفلاین
+├── data.ts                 # داده‌های پایه (منوها، قراردادها، مناطق)
+├── components/             # صفحات و کامپوننت‌های اصلی
+│   ├── mobile/             # اپ موبایل تکنسین
+│   └── ...
+├── contexts/               # AuthContext (احراز هویت)
+├── integrations/supabase/  # کلاینت و تایپ‌های سوپابیس
+└── utils/                  # ابزارها (تقویم شمسی، به‌روزرسانی اپ و...)
+```
 
-Yes, you can!
+## همگام‌سازی ابری روی هاست خودتان (بدون سوپابیس)
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+بک‌اند همگام‌سازی به‌صورت پیش‌فرض **سرویس سوپابیس نیست**؛ یک فایل کوچک PHP
+(`api/sync.php`) است که همراه خروجی روی هاست سی‌پنل/دایرکت‌ادمین شما آپلود می‌شود:
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+- داده‌ها در پوشهٔ `api/sync_data/` روی همان هاست ذخیره می‌شوند (با قفل فایل برای نوشتن امن)
+- دسترسی فقط با توکن مشترک؛ پوشهٔ داده با `.htaccess` از دسترسی مستقیم محافظت می‌شود
+- بدون تحریم، بدون سرویس خارجی، در دسترس برای کاربران داخل ایران
+- در محیط توسعه، سرور Vite معادل همین API را به‌صورت محلی اجرا می‌کند
+
+**بعد از آپلود روی هاست:**
+
+1. فایل `api/sync.php` را باز کنید و `SYNC_TOKEN` را عوض کنید.
+2. قبل از بیلد، همان توکن را در `.env` قرار دهید: `VITE_SYNC_TOKEN=رمز-جدید`
+
+اگر ترجیح می‌دهید از سوپابیس استفاده کنید، کافی است `VITE_SUPABASE_URL` را تنظیم کنید
+تا بک‌اند به‌صورت خودکار به سوپابیس سوییچ کند.
+
+## استقرار
+
+خروجی `npm run build` علاوه بر پوشهٔ `dist/`، فایل `public/public_html.zip` را می‌سازد
+که محتوای آمادهٔ آپلود در هاست سی‌پنل است (به‌همراه `.htaccess` مناسب و سرویس
+`api/sync.php`). فایل‌های داخل `public/` نیز مستقیماً در خروجی کپی می‌شوند
+(شامل لینک دانلود اپ اندروید و نسخهٔ وب).

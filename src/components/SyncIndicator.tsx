@@ -227,6 +227,13 @@ export default function SyncIndicator({
               <span className="font-bold">{s.offlineServicesCount} مورد</span>
             </div>
           )}
+
+          {s.error && !s.isManualOffline && (
+            <div className="rounded-lg bg-red-50 dark:bg-red-950/40 p-2 text-red-700 dark:text-red-300 text-[10.5px] leading-5">
+              <span className="font-bold">دلیل قطع اتصال به سرور: </span>
+              <span className="font-mono break-all" dir="ltr">{s.error}</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -388,7 +395,7 @@ export default function SyncIndicator({
     <div className="relative inline-flex items-center gap-1">
       <button
         type="button"
-        title={`آخرین همگام‌سازی: ${time || "-"} | فاصله بررسی: ${currentIntervalLabel}`}
+        title={`آخرین همگام‌سازی: ${time || "-"} | فاصله بررسی: ${currentIntervalLabel}${s.error ? ` | خطا: ${s.error}` : ""}`}
         onClick={handleSync}
         className={`flex items-center gap-1.5 text-[11.5px] transition ${color}`}
       >

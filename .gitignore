@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files — only .env.example and .env.development are tracked
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Local sync-api data (dev-mode twin of api/sync.php)
+.sync-data
