@@ -1,73 +1,83 @@
-# Welcome to your Lovable project
+# تلیفت همراه — سامانهٔ آسمان سرا
 
-## Project info
+سامانهٔ مدیریت سرویس و نگهداری آسانسور شرکت آسمان سرا (emami-asemansara.ir):
+پنل مدیریت قراردادها، مشتریان و زمان‌بندی سرویس‌ها + نمای موبایل تکنسین + پرتال مشتری — به‌صورت PWA راست‌به‌چپ.
 
-**URL**: https://lovable.dev/projects/e75419bb-285d-469c-a390-382dd0bbdc14
+## امکانات اصلی
 
-## How can I edit this code?
+- مدیریت قراردادها، مشتریان، سرویس‌های ماهانه و پرداخت‌ها
+- ویزارد ایجاد قرارداد جدید و گزارش‌گیری (خروجی Excel/PDF/چاپ)
+- زمان‌بندی سرویس‌ها و خرابی‌ها به تفکیک منطقه و سرویسکار
+- نمای موبایل مخصوص تکنسین (ثبت سرویس، آفلاین‌کاری و صف همگام‌سازی)
+- پرتال مشتری (مشاهدهٔ وضعیت قرارداد، مالی و ثبت خرابی)
+- همگام‌سازی ابری با Supabase با پشتیبانی کامل از حالت آفلاین
+- PWA قابل نصب روی اندروید/دسکتاپ با به‌روزرسانی خودکار
 
-There are several ways of editing your application.
+## فناوری‌ها
 
-**Use Lovable**
+| لایه | فناوری |
+|---|---|
+| فرانت‌اند | React 18 + TypeScript + Vite 5 |
+| استایل | Tailwind CSS v3 |
+| ذخیره‌سازی | localStorage (آفلاین) + Supabase (همگام‌سازی) |
+| استقرار | خروجی cPanel (زیپ `public_html`) |
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/e75419bb-285d-469c-a390-382dd0bbdc14) and start prompting.
+## پیش‌نیازها
 
-Changes made via Lovable will be committed automatically to this repo.
+- Node.js نسخهٔ ۲۰ یا بالاتر
+- برای بیلد کامل: Python 3 (اسکریپت بسته‌بندی خروجی سی‌پنل)
 
-**Use your preferred IDE**
+## نصب و اجرا
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+```bash
+# نصب وابستگی‌ها
+npm ci
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# اجرای سرور توسعه روی پورت 3000
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## دستورها
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+| دستور | توضیح |
+|---|---|
+| `npm run dev` | سرور توسعه (هاست 0.0.0.0، پورت 3000) |
+| `npm run build` | بیلد پروداکشن + ساخت `public_html.zip` برای سی‌پنل |
+| `npm run build:dev` | بیلد با حالت development |
+| `npm run lint` | ESLint |
+| `npm run preview` | پیش‌نمایش بیلد پروداکشن |
 
-**Use GitHub Codespaces**
+## متغیرهای محیطی
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+یک کپی از `.env.example` با نام `.env` بسازید:
 
-## What technologies are used for this project?
+```
+VITE_SUPABASE_URL=        # آدرس پروژهٔ سوپابیس
+VITE_SUPABASE_ANON_KEY=   # کلید عمومی سوپابیس
+```
 
-This project is built with:
+> ⚠️ **مهم:** اگر این مقادیر خالی باشند، اپ به‌طور پیش‌فرض به دیتابیس اصلی (پروداکشن) وصل می‌شود.
+> برای توسعهٔ امن، یک پروژهٔ سوپابیس جداگانه بسازید و مقادیر را در `.env` وارد کنید.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## ساختار پروژه
 
-## How can I deploy this project?
+```
+src/
+├── App.tsx                 # پوستهٔ اصلی (نوار ابزار، تب‌ها، ریبون)
+├── store.ts                # استور مرکزی داده‌ها (قراردادها، مشتری‌ها، پرداخت‌ها)
+├── cloudSync.ts            # همگام‌سازی ابری با صف آفلاین
+├── data.ts                 # داده‌های پایه (منوها، قراردادها، مناطق)
+├── components/             # صفحات و کامپوننت‌های اصلی
+│   ├── mobile/             # اپ موبایل تکنسین
+│   └── ...
+├── contexts/               # AuthContext (احراز هویت)
+├── integrations/supabase/  # کلاینت و تایپ‌های سوپابیس
+└── utils/                  # ابزارها (تقویم شمسی، به‌روزرسانی اپ و...)
+```
 
-Simply open [Lovable](https://lovable.dev/projects/e75419bb-285d-469c-a390-382dd0bbdc14) and click on Share -> Publish.
+## استقرار
 
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+خروجی `npm run build` علاوه بر پوشهٔ `dist/`، دو فایل `public/public_html.zip` و
+`public/cpanel_public_html.zip` می‌سازد که محتوای آمادهٔ آپلود در هاست سی‌پنل هستند
+(به‌همراه `.htaccess` مناسب). فایل‌های داخل `public/` نیز مستقیماً در خروجی کپی می‌شوند
+(شامل لینک‌های دانلود اپ اندروید و نسخهٔ وب).
