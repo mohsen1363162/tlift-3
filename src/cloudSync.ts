@@ -202,10 +202,10 @@ const saveMeta = (m: Record<string, string>) => {
 const db = () => (supabase as any).from(TABLE);
 
 // تایم‌اوت برای جلوگیری از معلق ماندن در اینترنت ضعیف
-function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
+function withTimeout(promise: Promise<any>, ms = 8000): Promise<any> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
+    new Promise<any>((_, reject) =>
       setTimeout(() => reject(new Error("مهلت اتصال به سرور به پایان رسید (Timeout)")), ms)
     ),
   ]);
