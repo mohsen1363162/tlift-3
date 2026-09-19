@@ -1,6 +1,4 @@
-import * as XLSX from "xlsx";
-
-export function exportToExcel<T extends Record<string, unknown>>(
+export async function exportToExcel<T extends Record<string, unknown>>(
   data: T[],
   columns: { key: keyof T | string; title: string; render?: (item: T) => unknown }[],
   fileName = "گزارش"
@@ -9,6 +7,9 @@ export function exportToExcel<T extends Record<string, unknown>>(
     alert("داده‌ای برای خروجی اکسل وجود ندارد.");
     return;
   }
+
+  // کتابخانهٔ سنگین xlsx فقط هنگام نیاز (کلیک روی خروجی اکسل) لود می‌شود
+  const XLSX = await import("xlsx");
 
   const rows = data.map((item, index) => {
     const row: Record<string, unknown> = { ردیف: index + 1 };
