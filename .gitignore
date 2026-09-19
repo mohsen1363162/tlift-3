@@ -31,3 +31,6 @@ dist-ssr
 
 # Local sync-api data (dev-mode twin of api/sync.php)
 .sync-data
+
+# PWA dev artifacts (vite-plugin-pwa devOptions)
+dev-dist
