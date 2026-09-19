@@ -110,7 +110,31 @@
   
   /* Persian styling */
   body { 
-    font-family: Vazir, Tahoma, Arial, sans-serif; 
+    font-family: Vazir, Tahoma, Arial, sans-serif;
+    background-image:
+      radial-gradient(circle at 8% 10%, rgba(186, 230, 253, 0.22), transparent 28rem),
+      radial-gradient(circle at 92% 85%, rgba(254, 205, 211, 0.18), transparent 30rem);
+  }
+
+  /* Friendly, soft interaction language across the workspace */
+  button, input, select, textarea {
+    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+
+  button:not(:disabled):active {
+    transform: scale(0.98);
+  }
+
+  input:focus, select:focus, textarea:focus {
+    box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.12);
+  }
+
+  table tbody tr:nth-child(even) {
+    background-color: rgba(224, 242, 254, 0.025);
+  }
+
+  table tbody tr:hover {
+    background-color: rgba(254, 226, 226, 0.055);
   }
 
   /* Custom Persian calendar styles */
