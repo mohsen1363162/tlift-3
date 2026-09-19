@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   LogOut,
   Smartphone,
+  Download,
+  RefreshCw,
 } from "lucide-react";
 import {
   navItems,
@@ -53,8 +55,11 @@ import ContractRibbonBar from "./components/ContractRibbonBar";
 import WelcomeBanner from "./components/WelcomeBanner";
 import TechnicianMobileApp from "./components/mobile/TechnicianMobileApp";
 import SyncIndicator from "./components/SyncIndicator";
+import AndroidAppModal from "./components/AndroidAppModal";
+import CustomerPortalView from "./components/CustomerPortalView";
 import { useContracts, useMarketingItems, appStore, MonthService } from "./store";
 import { useAuth } from "./contexts/AuthContext";
+import { checkForAppUpdates, APP_VERSION } from "./utils/appUpdater";
 import { CustomerAuthData } from "./utils/customerAuth";
 
 type Tab = {
@@ -120,7 +125,23 @@ export default function App() {
   const [tabs, setTabs] = useState<Tab[]>([{ id: 1, title: "تب جدید", kind: "home" }]);
   const [active, setActive] = useState(1);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [androidModal, setAndroidModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  const handleCheckUpdate = async () => {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    showToast("در حال بررسی و دریافت آخرین نسخه نرم‌افزار...");
+    try {
+      const res = await checkForAppUpdates();
+      showToast(res.message);
+    } catch {
+      showToast(`نسخه ${APP_VERSION} فعال است.`);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const contracts = useContracts();
   const marketingItems = useMarketingItems();
@@ -274,7 +295,38 @@ export default function App() {
 
   const current = tabs.find((x) => x.id === active);
 
+  // ۱. اگر کاربر لاگین‌شده مشتری/طرف قرارداد است، منحصراً پرتال اختصاصی مشتریان (فقط‌خواندنی) را ببیند
+  if (currentUserInfo?.role === "customer") {
+    return (
+      <CustomerPortalView
+        customer={currentUserInfo}
+        onSignOut={() => signOut()}
+      />
+    );
+  }
+
+  // ۲. کنترل دسترسی نسخه اندروید/موبایل: فقط سرویس‌کاران و مسئولین فنی ثبت‌شده در تنظیمات اولیه
   if (mobileMode) {
+    const isTechOrStaff =
+      currentUserInfo?.role === "technician" ||
+      currentUserInfo?.role === "staff" ||
+      currentUserInfo?.role === "admin";
+
+    if (!isTechOrStaff) {
+      return (
+        <CustomerPortalView
+          customer={
+            currentUserInfo || {
+              id: "cust_guest",
+              name: "مشتری گرامی",
+              role: "customer",
+            }
+          }
+          onSignOut={() => signOut()}
+        />
+      );
+    }
+
     return (
       <TechnicianMobileApp
         technician={{
@@ -282,7 +334,9 @@ export default function App() {
           phone: currentUserInfo?.phone || "09192868509",
           company: "شرکت آسمان‌سرا",
         }}
-        onExitToDesktop={() => setMobileMode(false)}
+        onExitToDesktop={
+          currentUserInfo?.role === "admin" ? () => setMobileMode(false) : undefined
+        }
         onSignOut={() => signOut()}
       />
     );
@@ -355,11 +409,31 @@ export default function App() {
 
           <button
             type="button"
+            onClick={handleCheckUpdate}
+            disabled={checkingUpdate}
+            title={`بروزرسانی نرم‌افزار به آخرین تغییرات (نسخه ${APP_VERSION})`}
+            className="flex items-center gap-1 rounded bg-blue-600 px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
+          >
+            <RefreshCw size={12} className={checkingUpdate ? "animate-spin" : ""} />
+            <span>آپدیت</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAndroidModal(true)}
+            title="دانلود فایل نصبی APK و نسخه اندروید تلیفت"
+            className="flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-emerald-700 shadow-sm transition"
+          >
+            <Smartphone size={13} /> فایل نصبی و اندروید
+          </button>
+
+          <button
+            type="button"
             onClick={() => setMobileMode(true)}
             title="اپلیکیشن موبایل تکنسین"
             className="flex items-center gap-1 rounded bg-blue-600 px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-blue-700"
           >
-            <Smartphone size={13} /> اپلیکیشن موبایل تکنسین
+            <Smartphone size={13} /> نمای موبایل
           </button>
 
           <button
@@ -722,6 +796,13 @@ export default function App() {
             onClose={() => setWelcomeUser(null)}
           />
         )}
+
+        {/* مودال دانلود و راهنمای نصب نسخه اندروید موبایل */}
+        <AndroidAppModal
+          open={androidModal}
+          onClose={() => setAndroidModal(false)}
+          onOpenMobileView={() => setMobileMode(true)}
+        />
 
         {/* Floating Toast Notification */}
         {toastMsg && (

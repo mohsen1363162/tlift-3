@@ -160,7 +160,7 @@ export default function CpanelSettingsPage({
               </div>
               <div>
                 <span className={t.sub}>حجم بسته کامل:</span>
-                <div className="font-semibold text-emerald-600 dark:text-emerald-400">~۷۲۵ کیلوبایت</div>
+                <div className="font-semibold text-emerald-600 dark:text-emerald-400">~۹۱۴ کیلوبایت</div>
               </div>
               <div>
                 <span className={t.sub}>مسیر در cPanel:</span>
@@ -190,7 +190,7 @@ export default function CpanelSettingsPage({
                 ) : (
                   <>
                     <Download size={16} />
-                    <span>دانلود مستقیم فایل public_html.zip (۷۲۵ KB)</span>
+                    <span>دانلود مستقیم فایل public_html.zip (۹۱۴ KB)</span>
                   </>
                 )}
               </button>
@@ -198,15 +198,19 @@ export default function CpanelSettingsPage({
               <a
                 href="/public_html.zip"
                 download="public_html.zip"
+                target="_blank"
+                rel="noreferrer"
                 className="flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-500/10 px-4 py-2.5 text-xs font-semibold hover:bg-emerald-500/20 transition text-emerald-700 dark:text-emerald-300"
               >
                 <Download size={14} />
-                لینک دانلود مستقیم بدون اسکریپت
+                دانلود در تب جدید (تضمینی در صورت محدودیت پیش‌نمایش)
               </a>
 
               <a
                 href="/cpanel_public_html.zip"
                 download="cpanel_public_html.zip"
+                target="_blank"
+                rel="noreferrer"
                 className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800 transition text-zinc-600 dark:text-zinc-300"
               >
                 <ExternalLink size={13} />

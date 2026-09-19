@@ -38,6 +38,8 @@ import {
   Search,
   Cloud,
   CloudOff,
+  Smartphone,
+  Download,
 } from "lucide-react";
 import type { Contract } from "../../data";
 import {
@@ -51,7 +53,15 @@ import {
 } from "../../store";
 import { useParts } from "../../partsStore";
 import { syncNow, toggleManualOffline } from "../../cloudSync";
-import { useSyncState } from "../SyncIndicator";
+import SyncIndicator, { useSyncState } from "../SyncIndicator";
+import AndroidAppModal from "../AndroidAppModal";
+import {
+  getCurrentJalaliMonthInfo,
+  getStoredMonthlySeconds,
+  addWorkSessionSeconds,
+  formatDurationPersian,
+} from "../../utils/workHoursTracker";
+import { checkForAppUpdates, APP_VERSION } from "../../utils/appUpdater";
 
 /* -------------------------------------------------------------------------- */
 /*                                   helpers                                  */
@@ -121,13 +131,14 @@ export default function TechnicianMobileApp({
 
   const [screen, setScreen] = useState<Screen>("home");
   const [drawer, setDrawer] = useState(false);
+  const [androidModal, setAndroidModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const notify = (m: string) => {
     setToast(m);
     setTimeout(() => setToast((c) => (c === m ? null : c)), 2600);
   };
 
-  /* ------------------------------ day timer ------------------------------ */
+  /* ------------------------------ day timer & monthly hours ------------------------------ */
   const [dayStart, setDayStart] = useState<number | null>(() => {
     const v = localStorage.getItem(LS.day);
     return v ? Number(v) : null;
@@ -137,17 +148,42 @@ export default function TechnicianMobileApp({
     const id = setInterval(() => setTick((x) => x + 1), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // ساعت کار ماه شمسی جاری (از اول ماه شمسی شروع شده و مقدار اولیه آن صفر است)
+  const [monthBaseSec, setMonthBaseSec] = useState<number>(() => getStoredMonthlySeconds());
+  const currentMonthInfo = useMemo(() => getCurrentJalaliMonthInfo(), [Math.floor(tick / 60)]);
   const daySec = dayStart ? Math.floor((Date.now() - dayStart) / 1000) : 0;
+  const currentMonthSec = monthBaseSec + (dayStart ? daySec : 0);
+
   const toggleDay = () => {
     if (dayStart) {
       localStorage.removeItem(LS.day);
+      const elapsed = Math.floor((Date.now() - dayStart) / 1000);
+      const newMonthTotal = addWorkSessionSeconds(elapsed);
+      setMonthBaseSec(newMonthTotal);
       setDayStart(null);
-      notify("روز کاری پایان یافت");
+      notify(`روز کاری پایان یافت. ساعت کار امروز: ${fmtDur(elapsed)}`);
     } else {
       const s = Date.now();
       localStorage.setItem(LS.day, String(s));
       setDayStart(s);
       notify("روز کاری شروع شد");
+    }
+  };
+
+  /* ------------------------------ app updater ------------------------------ */
+  const [updatingApp, setUpdatingApp] = useState(false);
+  const handleAppUpdate = async () => {
+    if (updatingApp) return;
+    setUpdatingApp(true);
+    notify("در حال بررسی و دریافت آخرین نسخه نرم‌افزار...");
+    try {
+      const res = await checkForAppUpdates();
+      notify(res.message);
+    } catch {
+      notify(`نسخه ${APP_VERSION} تلیفت همراه فعال است.`);
+    } finally {
+      setUpdatingApp(false);
     }
   };
 
@@ -379,36 +415,30 @@ export default function TechnicianMobileApp({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* دکمه همگام‌سازی در قسمت شروع کار */}
+          {/* دکمه همگام‌سازی همراه با کلید سه‌گوش مدت زمان در موبایل */}
+          <SyncIndicator variant="mobile" onShowToast={notify} />
+
+          {/* دکمه آپدیت و دریافت آخرین تغییرات */}
           <button
             type="button"
-            onClick={handleManualSync}
-            disabled={isSyncing}
-            title={isOffline ? "آفلاین - کلیک جهت تلاش برای همگام‌سازی مجدد" : "همگام‌سازی اطلاعات با سرور"}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11.5px] font-bold transition shadow-sm ${
-              isSyncing
-                ? "bg-blue-100 text-blue-700 animate-pulse"
-                : isOffline
-                ? "bg-amber-100 text-amber-800 border border-amber-300 active:bg-amber-200"
-                : "bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 active:bg-emerald-200"
-            }`}
+            onClick={handleAppUpdate}
+            disabled={updatingApp}
+            title={`بروزرسانی نرم‌افزار به آخرین نسخه (v${APP_VERSION})`}
+            className="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1.5 text-[11px] font-bold text-blue-700 border border-blue-300 hover:bg-blue-100 active:bg-blue-200 shadow-sm transition disabled:opacity-60"
           >
-            {isSyncing ? (
-              <RefreshCw size={12} className="animate-spin text-blue-600" />
-            ) : isOffline ? (
-              <CloudOff size={12} className="text-amber-600" />
-            ) : (
-              <Cloud size={12} className="text-emerald-600" />
-            )}
-            <span>
-              {isSyncing
-                ? "همگام‌سازی..."
-                : isOffline
-                ? sync.offlineServicesCount > 0
-                  ? `همگام‌سازی (${fa(sync.offlineServicesCount)})`
-                  : "همگام‌سازی"
-                : "همگام‌سازی"}
-            </span>
+            <RefreshCw size={13} className={updatingApp ? "animate-spin" : ""} />
+            <span className="hidden sm:inline">آپدیت</span>
+          </button>
+
+          {/* دکمه راهنما و نصب نسخه اندروید روی گوشی */}
+          <button
+            type="button"
+            onClick={() => setAndroidModal(true)}
+            title="دانلود فایل نصبی APK یا نصب نسخه اندروید"
+            className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1.5 text-[11px] font-bold text-emerald-700 border border-emerald-300 hover:bg-emerald-100 active:bg-emerald-200 shadow-sm"
+          >
+            <Smartphone size={13} />
+            <span className="hidden sm:inline">نصب APK</span>
           </button>
 
           {/* دکمه شروع کار */}
@@ -1064,17 +1094,36 @@ export default function TechnicianMobileApp({
           <div className="grid grid-cols-2 gap-2 p-3">
             {[
               ["ساعت کار امروز", fmtDur(daySec)],
-              ["ساعت کار ماه", "۱۶۵:۵۲"],
+              [`ساعت کار ${currentMonthInfo.monthName}`, formatDurationPersian(currentMonthSec)],
               ["سرویس‌های این ماه", fa(stats.done)],
               ["خرابی‌های این ماه", fa(stats.faultsDone)],
             ].map(([k, v]) => (
               <div key={k} className="rounded-lg bg-gray-50 p-2 text-center">
-                <div className="text-[14px] font-bold text-gray-800">{v}</div>
-                <div className="text-[10.5px] text-gray-500">{k}</div>
+                <div className="text-[13.5px] font-bold text-gray-800">{v}</div>
+                <div className="text-[10px] text-gray-500">{k}</div>
               </div>
             ))}
           </div>
+          <div className="px-3 pb-2 text-[10.5px] text-gray-400 text-center">
+            (محاسبه ساعت کار ماه از اول {currentMonthInfo.monthName} شروع از صفر)
+          </div>
           {[
+            [
+              RefreshCw,
+              `بروزرسانی نرم‌افزار (آپدیت به نسخه ${APP_VERSION})`,
+              async () => {
+                setDrawer(false);
+                await handleAppUpdate();
+              },
+            ],
+            [
+              Smartphone,
+              "دانلود مستقیم فایل نصبی اندروید (Telift.apk)",
+              () => {
+                setDrawer(false);
+                setAndroidModal(true);
+              },
+            ],
             [FileBarChart2, "گزارشات", () => { setDrawer(false); setScreen("services"); }],
             [RefreshCw, sync.status === "online" ? "همگام‌سازی اطلاعات (متصل)" : "همگام‌سازی اطلاعات (آفلاین)", async () => {
               setDrawer(false);
@@ -1173,6 +1222,7 @@ export default function TechnicianMobileApp({
         {["home", "map", "calendar", "services"].includes(screen) && renderBottomNav()}
         {renderDrawer()}
         {renderPayModal()}
+        <AndroidAppModal open={androidModal} onClose={() => setAndroidModal(false)} />
 
         {toast && (
           <div className="fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-gray-900/90 px-4 py-2 text-[12px] text-white shadow-xl">

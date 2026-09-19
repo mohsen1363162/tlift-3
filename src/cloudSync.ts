@@ -1,6 +1,7 @@
 /**
  * همگام‌سازی ابری با سرور (Supabase / Cloud State)
  * با پشتیبانی کامل از حالت آفلاین، صف ذخیره‌سازی محلی پایدار و همگام‌سازی خودکار
+ * با امکان تنظیم فاصله زمانی همگام‌سازی توسط کاربر
  */
 import { supabase } from "@/integrations/supabase/client";
 
@@ -23,6 +24,7 @@ export type SyncState = {
   pending: number;
   offlineServicesCount: number;
   isManualOffline: boolean;
+  intervalMinutes: number; // 0 = دستی (بدون چک دوره‌ای)، ۲، ۵، ۱۰، ۱۵، ۳۰، ۶۰ دقیقه
   error?: string;
 };
 
@@ -33,6 +35,19 @@ const META_KEY = "tlift_cloud_meta_v1";
 const QUEUE_KEY = "tlift_offline_queue_v2";
 const OFFLINE_SERVICES_KEY = "tlift_offline_services_v1";
 const MANUAL_OFFLINE_KEY = "tlift_manual_offline_v1";
+const SYNC_INTERVAL_KEY = "tlift_sync_interval_minutes_v1";
+const DEFAULT_INTERVAL_MINUTES = 5; // پیش‌فرض: هر ۵ دقیقه
+
+// خواندن مدت زمان همگام‌سازی
+export const getSyncInterval = (): number => {
+  try {
+    const v = localStorage.getItem(SYNC_INTERVAL_KEY);
+    if (v !== null) return Number(v);
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_INTERVAL_MINUTES;
+};
 
 // خواندن صف ذخیره‌سازی محلی پایدار
 const loadQueue = (): Record<string, unknown> => {
@@ -91,6 +106,7 @@ const getInitialManualOffline = (): boolean => {
 const queue: Record<string, unknown> = loadQueue();
 const timers: Record<string, ReturnType<typeof setTimeout>> = {};
 let applyingRemote = false;
+let periodicTimer: ReturnType<typeof setInterval> | null = null;
 
 let state: SyncState = {
   status: typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "idle",
@@ -98,6 +114,7 @@ let state: SyncState = {
   pending: Object.keys(queue).length,
   offlineServicesCount: getOfflineServices().length,
   isManualOffline: getInitialManualOffline(),
+  intervalMinutes: getSyncInterval(),
 };
 
 const listeners = new Set<Listener>();
@@ -135,6 +152,35 @@ export const setManualOffline = (enabled: boolean) => {
 export const toggleManualOffline = () => {
   setManualOffline(!state.isManualOffline);
 };
+
+export const setSyncInterval = (minutes: number) => {
+  try {
+    localStorage.setItem(SYNC_INTERVAL_KEY, String(minutes));
+  } catch {
+    /* ignore */
+  }
+  setState({ intervalMinutes: minutes });
+  restartPeriodicSync();
+};
+
+function restartPeriodicSync() {
+  if (periodicTimer) {
+    clearInterval(periodicTimer);
+    periodicTimer = null;
+  }
+  const min = state.intervalMinutes;
+  if (min <= 0) {
+    // حالت فقط دستی؛ هیچ چک دوره‌ای در پس‌زمینه اجرا نشود
+    return;
+  }
+  const ms = Math.max(min, 1) * 60 * 1000;
+  periodicTimer = setInterval(() => {
+    if (!state.isManualOffline && typeof navigator !== "undefined" && navigator.onLine) {
+      if (Object.keys(queue).length) flushAll();
+      else pullAll();
+    }
+  }, ms);
+}
 
 // ---- local meta (updated_at per key) ----
 const loadMeta = (): Record<string, string> => {
@@ -223,7 +269,8 @@ async function flushKey(key: string): Promise<boolean> {
       error: String((e as Error)?.message || e),
     });
     clearTimeout(timers[key]);
-    timers[key] = setTimeout(() => flushKey(key), 20000);
+    // تلاش مجدد با فاصله بر مبنای تایمر یا حداقل ۲۰ ثانیه
+    timers[key] = setTimeout(() => flushKey(key), 25000);
     return false;
   }
 }
@@ -319,10 +366,11 @@ export async function startCloudSync() {
   if (started) return;
   started = true;
 
-  // مقداردهی اولیه تعداد صف
+  // مقداردهی اولیه تعداد صف و وضعیت
   setState({
     pending: Object.keys(queue).length,
     offlineServicesCount: getOfflineServices().length,
+    intervalMinutes: getSyncInterval(),
   });
 
   if (!state.isManualOffline && navigator.onLine) {
@@ -335,13 +383,8 @@ export async function startCloudSync() {
     setState({ status: "offline" });
   }
 
-  // تلاش مجدد دوره‌ای برای صف و همگام‌سازی
-  setInterval(() => {
-    if (!state.isManualOffline && navigator.onLine) {
-      if (Object.keys(queue).length) flushAll();
-      else pullAll();
-    }
-  }, 45000);
+  // راه‌اندازی تایمر همگام‌سازی دوره‌ای بر اساس فاصله تنظیم‌شده توسط کاربر
+  restartPeriodicSync();
 
   window.addEventListener("online", () => {
     if (!state.isManualOffline) {
