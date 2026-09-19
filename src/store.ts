@@ -185,21 +185,45 @@ export function generateInitialMonths(startYear = 1405, monthlyAmount = 8500000)
 function loadStorage<T>(key: string, fallback: T): T {
   try {
     const item = localStorage.getItem(key);
-    if (!item) return fallback;
-    return JSON.parse(item);
+    if (item) return JSON.parse(item);
+
+    // اگر کلید اصلی به هر دلیل آسیب دید، آخرین نسخه پشتیبان محلی بازیابی شود.
+    const backup = localStorage.getItem(`${key}__backup`);
+    if (backup) {
+      const restored = JSON.parse(backup) as T;
+      localStorage.setItem(key, backup);
+      return restored;
+    }
+    return fallback;
   } catch (e) {
     console.warn(`Error reading localStorage for ${key}`, e);
-    return fallback;
+    try {
+      const backup = localStorage.getItem(`${key}__backup`);
+      return backup ? (JSON.parse(backup) as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+}
+
+function writeLocalStorage<T>(key: string, data: T) {
+  try {
+    const serialized = JSON.stringify(data);
+    // قبل از هر تغییر، نسخه سالم فعلی را نگه می‌داریم تا ارتقای برنامه
+    // یا پاسخ اشتباه سرور نتواند تنها کپی اطلاعات مالی را از بین ببرد.
+    const current = localStorage.getItem(key);
+    if (current && current !== serialized) {
+      localStorage.setItem(`${key}__backup`, current);
+    }
+    localStorage.setItem(key, serialized);
+  } catch (e) {
+    console.warn(`Error saving localStorage for ${key}`, e);
   }
 }
 
 function saveStorage<T>(key: string, data: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.warn(`Error saving to localStorage for ${key}`, e);
-  }
-  // آینه‌سازی در Supabase (پرچم‌های seed همگام نمی‌شوند)
+  writeLocalStorage(key, data);
+  // آینه‌سازی در سرور (پرچم‌های seed همگام نمی‌شوند)
   if (!key.includes("seeded")) pushKey(key, data);
 }
 
@@ -674,9 +698,11 @@ if (!isCsvSeeded) {
       }
     });
 
-    saveStorage("tlift_contracts", contracts);
-    saveStorage("tlift_customers", customers);
-    saveStorage("tlift_csv_seeded_v1", true);
+    // داده‌های نمونه/CSV اولیه فقط محلی هستند. ارسال آن‌ها به سرور می‌تواند
+    // اطلاعات واقعی نسخه قبلی را در اولین اجرای نسخه جدید رونویسی کند.
+    writeLocalStorage("tlift_contracts", contracts);
+    writeLocalStorage("tlift_customers", customers);
+    writeLocalStorage("tlift_csv_seeded_v1", true);
   } catch (e) {
     console.error("Error auto-seeding CSV contracts", e);
   }
@@ -688,8 +714,8 @@ if (!isCustCsvSeeded) {
   try {
     const custRows = parseCustomersCsv(RAW_CUSTOMERS_CSV_DATA);
     customers = custRows.map((r, i) => convertRowToCustomer(r, i + 1));
-    saveStorage("tlift_customers", customers);
-    saveStorage("tlift_cust_csv_seeded_v1", true);
+    writeLocalStorage("tlift_customers", customers);
+    writeLocalStorage("tlift_cust_csv_seeded_v1", true);
   } catch (e) {
     console.error("Error auto-seeding CSV customers", e);
   }
@@ -788,11 +814,8 @@ registerApplier((key, data) => {
     default:
       return;
   }
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch {
-    /* ignore */
-  }
+  // دریافت نسخه جدید نباید نسخه محلی قبلی را بدون پشتیبان از بین ببرد.
+  writeLocalStorage(key, data);
   notifyListeners();
 });
 

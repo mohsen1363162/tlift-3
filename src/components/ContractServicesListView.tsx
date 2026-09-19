@@ -118,7 +118,7 @@ export default function ContractServicesListView({
     ["مانده بدهی قرارداد", money(debt)],
     ["مانده بدهی ساختمان", money(debt)],
     ["مانده مشتری", money(debt)],
-    ["نوع قرارداد", "سرویس نگهداری - به ازای سرویس"],
+    ["نام ساختمان", contract.building],
     ["مسئول هماهنگی/مشتری", contract.manager],
   ];
 

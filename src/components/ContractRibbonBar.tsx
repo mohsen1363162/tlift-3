@@ -54,7 +54,6 @@ const DEFAULT_ORDER = [
   "debt",
   "buildingDebt",
   "customerDebt",
-  "contractType",
   "managerName",
   "phone",
   "zone",
@@ -201,13 +200,6 @@ export default function ContractRibbonBar({
         val: money(customerDebt),
         isLink: false,
         hasCoin: true,
-      },
-      contractType: {
-        key: "contractType",
-        label: "نوع قرارداد",
-        val: contractType,
-        isLink: false,
-        hasCoin: false,
       },
       phone: {
         key: "phone",
