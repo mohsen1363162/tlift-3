@@ -1,0 +1,1185 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Menu,
+  Play,
+  Square,
+  AlertTriangle,
+  Plus,
+  Wrench,
+  Home,
+  Map as MapIcon,
+  CalendarDays,
+  Briefcase,
+  ChevronLeft,
+  ChevronRight,
+  Phone,
+  Navigation,
+  Truck,
+  Image as ImageIcon,
+  MapPin,
+  Info,
+  Users,
+  Mic,
+  MicOff,
+  Camera,
+  Check,
+  X,
+  Clock,
+  RefreshCw,
+  FileBarChart2,
+  LogOut,
+  Monitor,
+  Eraser,
+  Save,
+  CreditCard,
+  Building2,
+  ClipboardCheck,
+  Package,
+  Search,
+  Cloud,
+  CloudOff,
+} from "lucide-react";
+import type { Contract } from "../../data";
+import {
+  appStore,
+  useContracts,
+  useChecklist,
+  useChecklistCategories,
+  MonthService,
+  ServiceChecklistStatus,
+  ServicePartItem,
+} from "../../store";
+import { useParts } from "../../partsStore";
+import { syncNow, toggleManualOffline } from "../../cloudSync";
+import { useSyncState } from "../SyncIndicator";
+
+/* -------------------------------------------------------------------------- */
+/*                                   helpers                                  */
+/* -------------------------------------------------------------------------- */
+
+const fa = (n: number | string) => Number(n || 0).toLocaleString("fa-IR");
+const pad = (n: number) => String(n).padStart(2, "0");
+const fmtDur = (sec: number) =>
+  `${pad(Math.floor(sec / 3600))}:${pad(Math.floor((sec % 3600) / 60))}:${pad(sec % 60)}`.replace(
+    /\d/g,
+    (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]
+  );
+const nowTime = () => {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+const todayJalali = () =>
+  new Intl.DateTimeFormat("fa-IR-u-ca-persian", { year: "numeric", month: "long", day: "numeric" }).format(
+    new Date()
+  );
+
+const LS = {
+  day: "tlift_mobile_day_start",
+  activeJob: "tlift_mobile_active_job",
+};
+
+type Job = { contract: Contract; month: MonthService; overdue: boolean };
+type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services";
+
+export type TechnicianInfo = { name: string; phone?: string; code?: string; company?: string };
+
+/* -------------------------------------------------------------------------- */
+/*                                  component                                 */
+/* -------------------------------------------------------------------------- */
+
+export default function TechnicianMobileApp({
+  technician,
+  onExitToDesktop,
+  onSignOut,
+}: {
+  technician: TechnicianInfo;
+  onExitToDesktop: () => void;
+  onSignOut: () => void;
+}) {
+  const contracts = useContracts();
+  const checklist = useChecklist();
+  const categories = useChecklistCategories();
+  const parts = useParts();
+  const sync = useSyncState();
+  const [syncBusy, setSyncBusy] = useState(false);
+  const isOffline = sync.status === "offline" || sync.status === "error" || sync.isManualOffline;
+  const isSyncing = sync.status === "syncing" || syncBusy;
+
+  const handleManualSync = async () => {
+    if (isSyncing) return;
+    setSyncBusy(true);
+    notify("در حال همگام‌سازی اطلاعات با سرور...");
+    try {
+      const res = await syncNow();
+      notify(res.message);
+    } catch {
+      notify("خطا در همگام‌سازی؛ داده‌ها در حافظه آفلاین محفوظ است.");
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const [screen, setScreen] = useState<Screen>("home");
+  const [drawer, setDrawer] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const notify = (m: string) => {
+    setToast(m);
+    setTimeout(() => setToast((c) => (c === m ? null : c)), 2600);
+  };
+
+  /* ------------------------------ day timer ------------------------------ */
+  const [dayStart, setDayStart] = useState<number | null>(() => {
+    const v = localStorage.getItem(LS.day);
+    return v ? Number(v) : null;
+  });
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const daySec = dayStart ? Math.floor((Date.now() - dayStart) / 1000) : 0;
+  const toggleDay = () => {
+    if (dayStart) {
+      localStorage.removeItem(LS.day);
+      setDayStart(null);
+      notify("روز کاری پایان یافت");
+    } else {
+      const s = Date.now();
+      localStorage.setItem(LS.day, String(s));
+      setDayStart(s);
+      notify("روز کاری شروع شد");
+    }
+  };
+
+  /* -------------------------------- jobs --------------------------------- */
+  const jobs = useMemo<Job[]>(() => {
+    const out: Job[] = [];
+    contracts.forEach((c, idx) => {
+      const details = appStore.getContractDetails(c.id);
+      const m = details.months.find((x) => !x.done);
+      if (m) out.push({ contract: c, month: m, overdue: idx % 3 === 2 });
+    });
+    return out;
+  }, [contracts, tick % 5 === 0 ? tick : 0]);
+  const todayJobs = jobs.filter((j) => !j.overdue);
+  const pastJobs = jobs.filter((j) => j.overdue);
+
+  const [selected, setSelected] = useState<Job | null>(null);
+
+  /* ----------------------------- active service -------------------------- */
+  const [jobStart, setJobStart] = useState<number | null>(null);
+  const [jobStartClock, setJobStartClock] = useState<string>("");
+  const jobSec = jobStart ? Math.floor((Date.now() - jobStart) / 1000) : 0;
+
+  const [workTab, setWorkTab] = useState<"checklist" | "parts" | "faults">("checklist");
+  const [results, setResults] = useState<Record<number, ServiceChecklistStatus>>({});
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [usedParts, setUsedParts] = useState<ServicePartItem[]>([]);
+  const [partPicker, setPartPicker] = useState(false);
+  const [partQuery, setPartQuery] = useState("");
+  const [faults, setFaults] = useState<{ text: string; fixed: boolean }[]>([]);
+  const [newFault, setNewFault] = useState("");
+
+  const [wage, setWage] = useState(0);
+  const [trip, setTrip] = useState(0);
+  const [report, setReport] = useState("");
+  const [reminder, setReminder] = useState("");
+  const [followup, setFollowup] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+
+  const [managerPresent, setManagerPresent] = useState(true);
+  const [signed, setSigned] = useState(false);
+  const [payModal, setPayModal] = useState(false);
+  const [payAmount, setPayAmount] = useState(0);
+  const [payMethod, setPayMethod] = useState("کارت‌خوان سیار");
+  const [payRef, setPayRef] = useState("");
+
+  const partsTotal = usedParts.reduce((s, p) => s + p.qty * p.price, 0);
+  const total = (selected?.month.amount || 0) + partsTotal + wage + trip;
+
+  const resetWork = () => {
+    setJobStart(null);
+    setJobStartClock("");
+    setWorkTab("checklist");
+    setResults({});
+    setNotes({});
+    setUsedParts([]);
+    setFaults([]);
+    setWage(0);
+    setTrip(0);
+    setReport("");
+    setReminder("");
+    setFollowup("");
+    setPhotos([]);
+    setSigned(false);
+    setManagerPresent(true);
+  };
+
+  const startService = (j: Job) => {
+    setSelected(j);
+    setJobStart(Date.now());
+    setJobStartClock(nowTime());
+    setScreen("work");
+    if (!dayStart) toggleDay();
+  };
+
+  const finishService = () => {
+    if (!selected) return;
+    const faultsList = faults.map((f) => `${f.text}${f.fixed ? " (رفع شد)" : ""}`);
+    appStore.addServiceSubmission(selected.contract.id, selected.month.id, {
+      techs: [technician.name],
+      doneBy: technician.name,
+      doneDate: todayJalali(),
+      inTime: jobStartClock,
+      outTime: nowTime(),
+      report,
+      reminder,
+      total,
+      parts: partsTotal,
+      wage,
+      trip,
+      discount: 0,
+      faults: faults.length,
+      faultsList,
+      partsList: usedParts,
+    });
+    appStore.updateMonthService(selected.contract.id, selected.month.id, {
+      checklistResults: results,
+      customerFollowup: followup,
+      attachments: photos,
+    });
+    setPayAmount(total);
+    setPayModal(true);
+  };
+
+  const submitPayment = (skip: boolean) => {
+    if (selected && !skip && payAmount > 0) {
+      appStore.addPayment(
+        selected.contract.id,
+        {
+          title: `دریافت وجه سرویس ${selected.month.m} ${selected.month.y}`,
+          date: todayJalali(),
+          amount: payAmount,
+          method: payMethod,
+          ref: payRef,
+          monthId: selected.month.id,
+          customerName: selected.contract.manager,
+          buildingName: selected.contract.building,
+          regDate: todayJalali(),
+        },
+        selected.month.id
+      );
+    }
+    setPayModal(false);
+    notify(
+      isOffline
+        ? skip
+          ? "سرویس به‌صورت آفلاین ثبت شد (در صف همگام‌سازی)"
+          : "سرویس و دریافت وجه به‌صورت آفلاین ثبت شد"
+        : skip
+        ? "سرویس ثبت و همگام‌سازی ابری انجام شد"
+        : "سرویس و دریافت وجه ثبت و همگام‌سازی شد"
+    );
+    resetWork();
+    setSelected(null);
+    setScreen("home");
+  };
+
+  /* ----------------------------- voice input ------------------------------ */
+  const [listening, setListening] = useState<string | null>(null);
+  const recRef = useRef<any>(null);
+  const voice = (field: "report" | "reminder" | "followup") => {
+    const W = window as any;
+    const SR = W.SpeechRecognition || W.webkitSpeechRecognition;
+    if (!SR) return notify("مرورگر شما از ورودی صوتی پشتیبانی نمی‌کند");
+    if (listening) {
+      recRef.current?.stop();
+      setListening(null);
+      return;
+    }
+    const r = new SR();
+    r.lang = "fa-IR";
+    r.interimResults = false;
+    r.onresult = (e: any) => {
+      const txt = Array.from(e.results).map((x: any) => x[0].transcript).join(" ");
+      const setter = field === "report" ? setReport : field === "reminder" ? setReminder : setFollowup;
+      setter((p) => (p ? p + " " + txt : txt));
+    };
+    r.onend = () => setListening(null);
+    r.onerror = () => setListening(null);
+    recRef.current = r;
+    r.start();
+    setListening(field);
+  };
+
+  /* ------------------------------ signature ------------------------------- */
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const pos = (e: any) => {
+    const c = canvasRef.current!;
+    const r = c.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: ((p.clientX - r.left) * c.width) / r.width, y: ((p.clientY - r.top) * c.height) / r.height };
+  };
+  const sigStart = (e: any) => {
+    if (signed) return;
+    drawing.current = true;
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const { x, y } = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+  const sigMove = (e: any) => {
+    if (!drawing.current || signed) return;
+    e.preventDefault();
+    const ctx = canvasRef.current!.getContext("2d")!;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#111";
+    const { x, y } = pos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+  const sigEnd = () => (drawing.current = false);
+  const sigClear = () => {
+    const c = canvasRef.current;
+    if (!c) return;
+    c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
+    setSigned(false);
+  };
+
+  /* -------------------------------- photos -------------------------------- */
+  const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach((f) => {
+      const rd = new FileReader();
+      rd.onload = () => setPhotos((p) => [...p, String(rd.result)]);
+      rd.readAsDataURL(f);
+    });
+  };
+
+  /* ---------------------------------------------------------------------- */
+  /*                                  views                                  */
+  /* ---------------------------------------------------------------------- */
+
+  const header = (title?: string, back?: () => void) => (
+    <div className="flex flex-col bg-white shadow-sm border-b">
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {back ? (
+            <button type="button" onClick={back} className="rounded-full p-2 hover:bg-gray-100">
+              <ChevronRight size={22} className="text-gray-700" />
+            </button>
+          ) : (
+            <button type="button" onClick={() => setDrawer(true)} className="rounded-full p-2 hover:bg-gray-100">
+              <Menu size={22} className="text-gray-700" />
+            </button>
+          )}
+          <div className="truncate text-[13.5px] font-bold text-gray-800">{title || "تلیفت همراه"}</div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* دکمه همگام‌سازی در قسمت شروع کار */}
+          <button
+            type="button"
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            title={isOffline ? "آفلاین - کلیک جهت تلاش برای همگام‌سازی مجدد" : "همگام‌سازی اطلاعات با سرور"}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11.5px] font-bold transition shadow-sm ${
+              isSyncing
+                ? "bg-blue-100 text-blue-700 animate-pulse"
+                : isOffline
+                ? "bg-amber-100 text-amber-800 border border-amber-300 active:bg-amber-200"
+                : "bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 active:bg-emerald-200"
+            }`}
+          >
+            {isSyncing ? (
+              <RefreshCw size={12} className="animate-spin text-blue-600" />
+            ) : isOffline ? (
+              <CloudOff size={12} className="text-amber-600" />
+            ) : (
+              <Cloud size={12} className="text-emerald-600" />
+            )}
+            <span>
+              {isSyncing
+                ? "همگام‌سازی..."
+                : isOffline
+                ? sync.offlineServicesCount > 0
+                  ? `همگام‌سازی (${fa(sync.offlineServicesCount)})`
+                  : "همگام‌سازی"
+                : "همگام‌سازی"}
+            </span>
+          </button>
+
+          {/* دکمه شروع کار */}
+          <button
+            type="button"
+            onClick={toggleDay}
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-bold text-white shadow-sm ${
+              dayStart ? "bg-blue-600" : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            {dayStart ? (
+              <>
+                <Square size={12} fill="white" /> {fmtDur(daySec)}
+              </>
+            ) : (
+              <>
+                <Play size={12} fill="white" /> شروع کار
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* بنر وضعیت آفلاین و صف سرویس‌ها */}
+      {isOffline && (
+        <div className="flex items-center justify-between bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900 border-t border-amber-200">
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+            <span>
+              {sync.offlineServicesCount > 0
+                ? `حالت آفلاین: ${fa(sync.offlineServicesCount)} سرویس در صف ذخیره محلی آماده ارسال است`
+                : "اینترنت قطع است (گزینه آفلاین فعال) — می‌توانید سرویس را ثبت کنید"}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleManualSync}
+            className="rounded bg-amber-600 px-2 py-0.5 text-[10.5px] font-bold text-white active:bg-amber-700 shrink-0"
+          >
+            ارسال و آپدیت
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const jobCard = (j: Job) => (
+    <button
+      key={j.contract.id}
+      type="button"
+      onClick={() => {
+        setSelected(j);
+        setScreen("job");
+      }}
+      className="flex w-full items-center gap-3 border-b bg-white px-3 py-3 text-right active:bg-gray-50"
+    >
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+        <Building2 size={26} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-bold text-gray-800">
+          {j.contract.building.replace(/^\*\s*/, "")} دستگاه 1 ({j.contract.no})
+        </div>
+        <div className="truncate text-[11.5px] text-gray-500">{j.contract.address || "قزوین"}</div>
+        <div className="mt-1 flex items-center gap-2 text-[11px]">
+          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+            سرویس {j.month.m} {j.month.y}
+          </span>
+          <span
+            className={`rounded px-1.5 py-0.5 ${
+              j.overdue ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-700"
+            }`}
+          >
+            {j.overdue ? "تاریخ گذشته" : "امروز"}
+          </span>
+        </div>
+      </div>
+      <ChevronLeft size={18} className="text-gray-400" />
+    </button>
+  );
+
+  const renderHomeView = () => (
+    <>
+      {header()}
+      <div className="grid grid-cols-3 gap-2 p-3">
+        {[
+          { l: "لیست خرابی", i: AlertTriangle, c: "text-red-500", badge: 1, go: () => setScreen("services") },
+          { l: "ثبت خرابی", i: Plus, c: "text-orange-500", go: () => notify("فرم ثبت خرابی") },
+          { l: "ثبت سرویس", i: Wrench, c: "text-blue-600", go: () => todayJobs[0] && startService(todayJobs[0]) },
+        ].map((b) => (
+          <button
+            key={b.l}
+            type="button"
+            onClick={b.go}
+            className="relative flex flex-col items-center gap-1 rounded-xl bg-white py-3 shadow-sm active:bg-gray-50"
+          >
+            <b.i size={24} className={b.c} />
+            <span className="text-[12px] text-gray-700">{b.l}</span>
+            {b.badge ? (
+              <span className="absolute right-2 top-2 rounded-full bg-red-500 px-1.5 text-[10px] text-white">
+                {fa(b.badge)}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+
+      <div className="mx-3 rounded-xl border border-dashed border-gray-300 bg-white p-3 text-center text-[12.5px] text-gray-500">
+        {jobStart && selected ? (
+          <button type="button" onClick={() => setScreen("work")} className="w-full text-right">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-blue-600">کار جاری: {selected.contract.building}</span>
+              <span className="rounded bg-blue-600 px-2 py-0.5 font-mono text-white">{fmtDur(jobSec)}</span>
+            </div>
+          </button>
+        ) : (
+          "کار فعالی ندارید"
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between px-3 text-[12.5px] font-bold text-gray-700">
+        <span>کارهای امروز ({fa(todayJobs.length)})</span>
+        <span className="text-[11px] font-normal text-gray-400">{todayJalali()}</span>
+      </div>
+      <div className="mt-1 bg-white">{todayJobs.map(jobCard)}</div>
+      {todayJobs.length === 0 && <div className="py-6 text-center text-[12px] text-gray-400">کاری برای امروز نیست</div>}
+
+      <div className="mt-3 px-3 text-[12.5px] font-bold text-gray-700">کارهای تاریخ گذشته ({fa(pastJobs.length)})</div>
+      <div className="mt-1 bg-white">{pastJobs.map((j) => jobCard(j))}</div>
+      <div className="h-16" />
+    </>
+  );
+
+  const renderJobView = () => {
+    if (!selected) return null;
+    const c = selected.contract;
+    const details = appStore.getContractDetails(c.id);
+    const debt = details.months.filter((m) => m.done && !m.paid).reduce((s, m) => s + m.amount, 0);
+    const round = (Icon: any, label: string, cls: string, run: () => void, big = false) => (
+      <button type="button" onClick={run} className="flex flex-col items-center gap-1">
+        <span
+          className={`flex items-center justify-center rounded-full text-white shadow-md ${cls} ${
+            big ? "h-16 w-16" : "h-12 w-12"
+          }`}
+        >
+          <Icon size={big ? 30 : 20} />
+        </span>
+        <span className="text-[10.5px] text-gray-600">{label}</span>
+      </button>
+    );
+    return (
+      <>
+        {header(`قرارداد ${c.no}`, () => setScreen("home"))}
+        <div className="relative h-44 w-full overflow-hidden bg-[linear-gradient(90deg,#e5e7eb_1px,transparent_1px),linear-gradient(#e5e7eb_1px,transparent_1px)] bg-[size:24px_24px] bg-gray-100">
+          <MapPin size={36} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full text-red-600 drop-shadow" />
+          <span className="absolute bottom-1 left-2 text-[10px] text-gray-400">نقشه موقعیت ساختمان</span>
+        </div>
+        <div className="-mt-7 flex items-end justify-around px-2">
+          {round(ImageIcon, "تصاویر", "bg-gray-500", () => notify("گالری تصاویر دستگاه"))}
+          {round(Phone, "تماس", "bg-sky-600", () => {
+            if (c.phone) window.location.href = `tel:${c.phone}`;
+            else notify("شماره تماس ثبت نشده");
+          })}
+          {round(Play, "شروع سرویس", "bg-emerald-600", () => startService(selected), true)}
+          {round(Navigation, "مسیریابی", "bg-violet-600", () =>
+            window.open(`https://www.google.com/maps/search/${encodeURIComponent(c.address || c.building)}`, "_blank")
+          )}
+          {round(Truck, "ایاب و ذهاب", "bg-orange-500", () => notify("ایاب و ذهاب ثبت شد"))}
+        </div>
+
+        <div className="mx-3 mt-4 rounded-xl bg-violet-600 p-3 text-[12.5px] leading-6 text-white">
+          <div className="mb-1 font-bold">{c.building.replace(/^\*\s*/, "")}</div>
+          {c.address || "قزوین"} {c.locationStatus ? `— ${c.locationStatus}` : ""}
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 p-3">
+          {[
+            { l: "ثبت موقعیت", i: MapPin, run: () => notify("موقعیت مکانی ثبت شد") },
+            { l: "اطلاعات دستگاه", i: Info, run: () => notify("آسانسور کششی ۶ توقف - ۶۳۰ کیلوگرم") },
+            { l: "نماینده‌ها", i: Users, run: () => notify(`${c.manager}${c.coordinator ? " / " + c.coordinator : ""}`) },
+          ].map((b) => (
+            <button key={b.l} type="button" onClick={b.run} className="flex flex-col items-center gap-1 rounded-xl bg-white py-3 shadow-sm">
+              <b.i size={20} className="text-violet-600" />
+              <span className="text-[11.5px] text-gray-700">{b.l}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mx-3 mb-20 overflow-hidden rounded-xl bg-white shadow-sm">
+          {[
+            ["شناسه سرویس", `#${selected.month.id}`],
+            ["شماره قرارداد", c.no],
+            ["دوره سرویس", `${selected.month.m} ${selected.month.y}`],
+            ["تاریخ شروع قرارداد", c.start],
+            ["تاریخ پایان قرارداد", c.end],
+            ["مدیر / نماینده", c.manager],
+            ["تلفن", c.phone || "-"],
+            ["بدهی مشتری", `${fa(debt)} ریال`],
+            ["مبلغ ماهیانه", `${fa(selected.month.amount)} ریال`],
+            ["پیوست‌ها", "—"],
+          ].map(([k, v]) => (
+            <div key={k} className="flex items-center justify-between border-b px-3 py-2.5 text-[12.5px] last:border-0">
+              <span className="text-gray-500">{k}</span>
+              <span className="font-medium text-gray-800">{v}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  const timerBar = () => (
+    <div className="flex items-center justify-between bg-blue-600 px-3 py-2 text-white">
+      <span className="text-[12px]">{selected?.contract.building.replace(/^\*\s*/, "")}</span>
+      <span className="flex items-center gap-1 font-mono text-[14px] font-bold">
+        <Clock size={14} /> {fmtDur(jobSec)}
+      </span>
+    </div>
+  );
+
+  const renderWorkView = () => {
+    const items = checklist.filter((i) => i.deviceType === "آسانسور");
+    const filteredParts = parts.filter((p) => p.name.includes(partQuery) || p.code.includes(partQuery));
+    const doneCount = Object.keys(results).length;
+    return (
+      <>
+        {header("انجام سرویس", () => setScreen("job"))}
+        {timerBar()}
+        <div className="flex bg-white text-[12.5px]">
+          {[
+            ["checklist", "چک‌لیست", ClipboardCheck],
+            ["parts", "قطعات", Package],
+            ["faults", "خرابی‌ها", AlertTriangle],
+          ].map(([k, l, I]: any) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setWorkTab(k)}
+              className={`flex flex-1 items-center justify-center gap-1 border-b-2 py-2.5 ${
+                workTab === k ? "border-blue-600 font-bold text-blue-600" : "border-transparent text-gray-500"
+              }`}
+            >
+              <I size={15} /> {l}
+              {k === "checklist" && <span className="text-[10px]">({fa(doneCount)}/{fa(items.length)})</span>}
+              {k === "parts" && usedParts.length > 0 && <span className="text-[10px]">({fa(usedParts.length)})</span>}
+              {k === "faults" && faults.length > 0 && <span className="text-[10px]">({fa(faults.length)})</span>}
+            </button>
+          ))}
+        </div>
+
+        <div className="pb-20">
+          {workTab === "checklist" &&
+            categories.map((cat) => {
+              const rows = items.filter((i) => i.category === cat);
+              if (!rows.length) return null;
+              return (
+                <div key={cat} className="mt-2 bg-white">
+                  <div className="bg-gray-100 px-3 py-1.5 text-[12px] font-bold text-gray-700">{cat}</div>
+                  {rows.map((r) => (
+                    <div key={r.id} className="border-b px-3 py-2.5">
+                      <div className="text-[12.5px] leading-5 text-gray-800">{r.question}</div>
+                      <div className="mt-1.5 flex items-center gap-3">
+                        {(["ok", "fault"] as ServiceChecklistStatus[]).map((s) => (
+                          <label key={s} className="flex items-center gap-1 text-[12px]">
+                            <input
+                              type="radio"
+                              name={`q${r.id}`}
+                              checked={results[r.id] === s}
+                              onChange={() => setResults((p) => ({ ...p, [r.id]: s }))}
+                              className={s === "ok" ? "accent-emerald-600" : "accent-red-600"}
+                            />
+                            <span className={s === "ok" ? "text-emerald-700" : "text-red-600"}>
+                              {s === "ok" ? "سالم" : "ناسالم"}
+                            </span>
+                          </label>
+                        ))}
+                        <input
+                          value={notes[r.id] || ""}
+                          onChange={(e) => setNotes((p) => ({ ...p, [r.id]: e.target.value }))}
+                          placeholder="توضیحات"
+                          className="ml-auto w-32 rounded border px-2 py-1 text-[11px] outline-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+
+          {workTab === "parts" && (
+            <div className="p-3">
+              <button
+                type="button"
+                onClick={() => setPartPicker(true)}
+                className="w-full rounded-lg bg-blue-600 py-2.5 text-[13px] font-bold text-white"
+              >
+                + انتخاب قطعه
+              </button>
+              <div className="mt-3 overflow-hidden rounded-xl bg-white shadow-sm">
+                {usedParts.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2 border-b px-3 py-2 text-[12.5px]">
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-800">{p.name}</div>
+                      <div className="text-[11px] text-gray-500">{fa(p.price)} ریال / {p.unit}</div>
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      value={p.qty}
+                      onChange={(e) =>
+                        setUsedParts((l) => l.map((x, k) => (k === i ? { ...x, qty: Number(e.target.value) || 1 } : x)))
+                      }
+                      className="w-14 rounded border px-1 py-1 text-center"
+                    />
+                    <button type="button" onClick={() => setUsedParts((l) => l.filter((_, k) => k !== i))}>
+                      <X size={16} className="text-red-500" />
+                    </button>
+                  </div>
+                ))}
+                {usedParts.length === 0 && <div className="py-6 text-center text-[12px] text-gray-400">قطعه‌ای ثبت نشده</div>}
+                {usedParts.length > 0 && (
+                  <div className="flex justify-between bg-gray-50 px-3 py-2 text-[12.5px] font-bold">
+                    <span>جمع قطعات</span>
+                    <span>{fa(partsTotal)} ریال</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {workTab === "faults" && (
+            <div className="p-3">
+              <div className="flex gap-2">
+                <input
+                  value={newFault}
+                  onChange={(e) => setNewFault(e.target.value)}
+                  placeholder="شرح خرابی جدید..."
+                  className="flex-1 rounded-lg border bg-white px-3 py-2 text-[12.5px] outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newFault.trim()) return;
+                    setFaults((f) => [...f, { text: newFault.trim(), fixed: false }]);
+                    setNewFault("");
+                  }}
+                  className="rounded-lg bg-red-600 px-3 text-white"
+                >
+                  ثبت
+                </button>
+              </div>
+              <div className="mt-3 overflow-hidden rounded-xl bg-white shadow-sm">
+                {faults.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 border-b px-3 py-2.5 text-[12.5px]">
+                    <AlertTriangle size={16} className={f.fixed ? "text-emerald-500" : "text-red-500"} />
+                    <span className={`flex-1 ${f.fixed ? "text-gray-400 line-through" : "text-gray-800"}`}>{f.text}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFaults((l) => l.map((x, k) => (k === i ? { ...x, fixed: !x.fixed } : x)))}
+                      className={`rounded px-2 py-1 text-[11px] text-white ${f.fixed ? "bg-gray-400" : "bg-emerald-600"}`}
+                    >
+                      {f.fixed ? "بازگشت" : "رفع شد"}
+                    </button>
+                  </div>
+                ))}
+                {faults.length === 0 && <div className="py-6 text-center text-[12px] text-gray-400">خرابی ثبت نشده</div>}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {stepNav(() => setScreen("job"), () => setScreen("report"))}
+
+        {partPicker && (
+          <div className="fixed inset-0 z-50 flex items-end bg-black/50" onClick={() => setPartPicker(false)}>
+            <div className="max-h-[75vh] w-full overflow-auto rounded-t-2xl bg-white p-3" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-2 flex items-center gap-2 rounded-lg border px-2">
+                <Search size={14} className="text-gray-400" />
+                <input
+                  autoFocus
+                  value={partQuery}
+                  onChange={(e) => setPartQuery(e.target.value)}
+                  placeholder="جستجوی قطعه..."
+                  className="w-full py-2 text-[13px] outline-none"
+                />
+              </div>
+              {filteredParts.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setUsedParts((l) => [...l, { code: p.code, name: p.name, unit: p.unit, qty: 1, price: p.price }]);
+                    setPartPicker(false);
+                    setPartQuery("");
+                  }}
+                  className="flex w-full items-center justify-between border-b py-2.5 text-right text-[12.5px]"
+                >
+                  <span className="text-gray-800">{p.name}</span>
+                  <span className="text-gray-500">{fa(p.price)} ریال</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const voiceField = (
+    id: "report" | "reminder" | "followup",
+    label: string,
+    value: string,
+    set: (v: string) => void
+  ) => (
+    <div key={id} className="mt-3">
+      <div className="mb-1 flex items-center justify-between text-[12px] text-gray-600">
+        <span>{label}</span>
+        <button
+          type="button"
+          onClick={() => voice(id)}
+          className={`rounded-full p-1.5 ${listening === id ? "animate-pulse bg-red-500 text-white" : "bg-gray-100 text-gray-600"}`}
+        >
+          {listening === id ? <MicOff size={14} /> : <Mic size={14} />}
+        </button>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => set(e.target.value)}
+        rows={3}
+        className="w-full rounded-lg border bg-white p-2 text-[12.5px] outline-none"
+      />
+    </div>
+  );
+
+  const renderReportView = () => (
+    <>
+      {header("گزارش سرویس", () => setScreen("work"))}
+      {timerBar()}
+      <div className="p-3 pb-20">
+        <div className="flex items-center justify-between rounded-xl bg-blue-50 p-3 text-[12.5px] text-blue-800">
+          <span>زمان صرف شده: <b className="font-mono">{fmtDur(jobSec)}</b></span>
+          <span className="flex items-center gap-1"><Clock size={13} /> شروع از ساعت {jobStartClock}</span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {[
+            ["اجرت (ریال)", wage, setWage],
+            ["ایاب و ذهاب (ریال)", trip, setTrip],
+          ].map(([l, v, s]: any) => (
+            <label key={l} className="text-[12px] text-gray-600">
+              {l}
+              <input
+                type="number"
+                value={v || ""}
+                onChange={(e) => s(Number(e.target.value) || 0)}
+                className="mt-1 w-full rounded-lg border bg-white px-2 py-2 text-[13px] outline-none"
+              />
+            </label>
+          ))}
+        </div>
+        {voiceField("report", "گزارش سرویس", report, setReport)}
+        {voiceField("reminder", "یادآوری سرویس بعدی", reminder, setReminder)}
+        {voiceField("followup", "پیگیری بعدی مشتری", followup, setFollowup)}
+
+        <div className="mt-3">
+          <div className="mb-1 text-[12px] text-gray-600">تصاویر</div>
+          <div className="flex flex-wrap gap-2">
+            {photos.map((p, i) => (
+              <div key={i} className="relative h-16 w-16 overflow-hidden rounded-lg border">
+                <img src={p} className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setPhotos((l) => l.filter((_, k) => k !== i))}
+                  className="absolute right-0 top-0 rounded-bl bg-red-600 p-0.5 text-white"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+            <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400">
+              <Camera size={20} />
+              <span className="text-[10px]">افزودن</span>
+              <input type="file" accept="image/*" capture="environment" multiple onChange={onPhoto} className="hidden" />
+            </label>
+          </div>
+        </div>
+      </div>
+      {stepNav(() => setScreen("work"), () => setScreen("sign"))}
+    </>
+  );
+
+  const renderSignView = () => (
+    <>
+      {header("امضا و اتمام", () => setScreen("report"))}
+      {timerBar()}
+      <div className="p-3 pb-24">
+        <div className="overflow-hidden rounded-xl bg-white shadow-sm">
+          {[
+            ["مبلغ سرویس دوره", `${fa(selected?.month.amount || 0)} ریال`],
+            ["قطعات", `${fa(partsTotal)} ریال`],
+            ["اجرت", `${fa(wage)} ریال`],
+            ["ایاب و ذهاب", `${fa(trip)} ریال`],
+          ].map(([k, v]) => (
+            <div key={k} className="flex justify-between border-b px-3 py-2 text-[12.5px]">
+              <span className="text-gray-500">{k}</span>
+              <span>{v}</span>
+            </div>
+          ))}
+          <div className="flex justify-between bg-emerald-50 px-3 py-2.5 text-[13px] font-bold text-emerald-800">
+            <span>جمع قابل پرداخت</span>
+            <span>{fa(total)} ریال</span>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center gap-4 rounded-xl bg-white p-3 text-[12.5px]">
+          {[
+            [true, "حضور مدیر"],
+            [false, "عدم حضور مدیر"],
+          ].map(([v, l]: any) => (
+            <label key={l} className="flex items-center gap-1">
+              <input type="radio" checked={managerPresent === v} onChange={() => setManagerPresent(v)} className="accent-blue-600" />
+              {l}
+            </label>
+          ))}
+          <span className="mr-auto text-gray-500">{selected?.contract.manager}</span>
+        </div>
+
+        {managerPresent && (
+          <div className="mt-3">
+            <div className="mb-1 rounded bg-red-50 px-2 py-1.5 text-[11px] text-red-600">
+              در صورت دریافت امضا امکان ویرایش اطلاعات وجود ندارد، لطفاً تغییرات را قبل از امضا اعمال کنید.
+            </div>
+            <canvas
+              ref={canvasRef}
+              width={600}
+              height={260}
+              onMouseDown={sigStart}
+              onMouseMove={sigMove}
+              onMouseUp={sigEnd}
+              onMouseLeave={sigEnd}
+              onTouchStart={sigStart}
+              onTouchMove={sigMove}
+              onTouchEnd={sigEnd}
+              className={`h-40 w-full touch-none rounded-xl border-2 bg-white ${signed ? "border-emerald-500" : "border-dashed border-gray-300"}`}
+            />
+            <div className="mt-2 flex gap-2">
+              <button type="button" onClick={sigClear} className="flex flex-1 items-center justify-center gap-1 rounded-lg border bg-white py-2 text-[12.5px]">
+                <Eraser size={14} /> پاک کردن
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSigned(true);
+                  notify("امضا ثبت شد");
+                }}
+                className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-blue-600 py-2 text-[12.5px] text-white"
+              >
+                <Check size={14} /> ثبت امضا
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-[480px] p-3 bg-white/95 backdrop-blur-sm border-t">
+        {isOffline && (
+          <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[11.5px] text-amber-800">
+            <div className="flex items-center gap-1.5">
+              <CloudOff size={14} className="text-amber-600 shrink-0" />
+              <span>اینترنت قطع است؛ سرویس به‌صورت آفلاین در صف دستگاه ثبت می‌شود</span>
+            </div>
+            <span className="rounded bg-amber-200 px-1.5 py-0.5 font-bold text-amber-900 text-[10px] shrink-0">
+              ثبت آفلاین
+            </span>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={finishService}
+          disabled={managerPresent && !signed}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-[14px] font-bold text-white shadow-lg disabled:opacity-40"
+        >
+          <Save size={16} /> {isOffline ? "ثبت آفلاین و اتمام سرویس" : "ثبت و اتمام سرویس"}
+        </button>
+      </div>
+    </>
+  );
+
+  const stepNav = (prev: () => void, next: () => void) => (
+    <div className="fixed inset-x-0 bottom-0 mx-auto flex max-w-[480px] gap-2 bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,.06)]">
+      <button type="button" onClick={prev} className="flex flex-1 items-center justify-center gap-1 rounded-xl border py-2.5 text-[13px]">
+        <ChevronRight size={16} /> مرحله قبل
+      </button>
+      <button type="button" onClick={next} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-blue-600 py-2.5 text-[13px] font-bold text-white">
+        مرحله بعد <ChevronLeft size={16} />
+      </button>
+    </div>
+  );
+
+  const simpleList = (title: string, list: Job[]) => (
+    <>
+      {header(title)}
+      <div className="mt-2 bg-white">{list.map((j) => jobCard(j))}</div>
+      {list.length === 0 && <div className="py-10 text-center text-[12px] text-gray-400">موردی نیست</div>}
+      <div className="h-16" />
+    </>
+  );
+
+  const renderBottomNav = () => (
+    <div className="fixed inset-x-0 bottom-0 mx-auto flex max-w-[480px] justify-around border-t bg-white py-1.5">
+      {[
+        ["home", "خانه", Home],
+        ["map", "نقشه", MapIcon],
+        ["calendar", "تقویم", CalendarDays],
+        ["services", "سرویس‌ها", Briefcase],
+      ].map(([k, l, I]: any) => (
+        <button
+          key={k}
+          type="button"
+          onClick={() => setScreen(k)}
+          className={`flex flex-col items-center gap-0.5 px-3 text-[10.5px] ${screen === k ? "text-blue-600" : "text-gray-500"}`}
+        >
+          <I size={20} /> {l}
+        </button>
+      ))}
+    </div>
+  );
+
+  /* ------------------------------- drawer -------------------------------- */
+  const stats = useMemo(() => {
+    let done = 0;
+    let faultsDone = 0;
+    contracts.forEach((c) => {
+      const d = appStore.getContractDetails(c.id);
+      done += d.months.filter((m) => m.done).length;
+      faultsDone += (d.breakdowns || []).filter((b) => b.status === "انجام شده").length;
+    });
+    return { done, faultsDone };
+  }, [contracts, screen]);
+
+  const renderDrawer = () =>
+    drawer ? (
+      <div className="fixed inset-0 z-50 flex bg-black/50" onClick={() => setDrawer(false)}>
+        <div className="h-full w-72 overflow-auto bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-blue-600 p-4 text-white">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 text-xl font-bold">
+              {technician.name.slice(0, 1)}
+            </div>
+            <div className="mt-2 text-[14px] font-bold">{technician.name}</div>
+            <div className="text-[11px] opacity-80">کد {technician.code || "6393"} · {technician.phone}</div>
+            <span className="mt-2 inline-block rounded bg-white/20 px-2 py-0.5 text-[11px]">
+              🏢 {technician.company || "شرکت آسمان‌سرا"}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 p-3">
+            {[
+              ["ساعت کار امروز", fmtDur(daySec)],
+              ["ساعت کار ماه", "۱۶۵:۵۲"],
+              ["سرویس‌های این ماه", fa(stats.done)],
+              ["خرابی‌های این ماه", fa(stats.faultsDone)],
+            ].map(([k, v]) => (
+              <div key={k} className="rounded-lg bg-gray-50 p-2 text-center">
+                <div className="text-[14px] font-bold text-gray-800">{v}</div>
+                <div className="text-[10.5px] text-gray-500">{k}</div>
+              </div>
+            ))}
+          </div>
+          {[
+            [FileBarChart2, "گزارشات", () => { setDrawer(false); setScreen("services"); }],
+            [RefreshCw, sync.status === "online" ? "همگام‌سازی اطلاعات (متصل)" : "همگام‌سازی اطلاعات (آفلاین)", async () => {
+              setDrawer(false);
+              notify("در حال همگام‌سازی...");
+              const ok = await syncNow();
+              notify(ok ? "اطلاعات با سرور همگام شد" : "اتصال به سرور برقرار نشد؛ داده‌ها محلی ذخیره شدند");
+            }],
+            [Monitor, "بازگشت به نسخه دسکتاپ", () => { setDrawer(false); onExitToDesktop(); }],
+            [LogOut, "خروج", onSignOut],
+          ].map(([I, l, run]: any) => (
+            <button key={l} type="button" onClick={run} className="flex w-full items-center gap-3 border-b px-4 py-3 text-right text-[13px] text-gray-700 hover:bg-gray-50">
+              <I size={18} className="text-gray-500" /> {l}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
+  /* ------------------------------ pay modal ------------------------------- */
+  const renderPayModal = () =>
+    payModal ? (
+      <div className="fixed inset-0 z-50 flex items-end bg-black/50">
+        <div className="w-full rounded-t-2xl bg-white p-4">
+          <div className="mb-3 flex items-center gap-2 text-[14px] font-bold text-gray-800">
+            <CreditCard size={18} className="text-emerald-600" /> دریافت وجه
+          </div>
+          <label className="block text-[12px] text-gray-600">
+            مبلغ دریافتی (ریال)
+            <input
+              type="number"
+              value={payAmount}
+              onChange={(e) => setPayAmount(Number(e.target.value) || 0)}
+              className="mt-1 w-full rounded-lg border px-2 py-2 text-[14px] font-bold outline-none"
+            />
+          </label>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {["کارت‌خوان سیار", "نقدی", "کارت به کارت", "چک"].map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPayMethod(m)}
+                className={`rounded-lg border py-2 text-[12.5px] ${payMethod === m ? "border-emerald-600 bg-emerald-50 text-emerald-700" : ""}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <input
+            value={payRef}
+            onChange={(e) => setPayRef(e.target.value)}
+            placeholder="شماره پیگیری / مرجع"
+            className="mt-3 w-full rounded-lg border px-2 py-2 text-[12.5px] outline-none"
+          />
+          <div className="mt-4 flex gap-2">
+            <button type="button" onClick={() => submitPayment(true)} className="flex-1 rounded-xl border py-2.5 text-[13px]">
+              بدون دریافت وجه
+            </button>
+            <button type="button" onClick={() => submitPayment(false)} className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-[13px] font-bold text-white">
+              ثبت پرداخت
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null;
+
+  /* -------------------------------- render -------------------------------- */
+  return (
+    <div dir="rtl" className="min-h-screen w-full bg-gray-200 font-[Vazirmatn,Tahoma,system-ui]">
+      <div className="relative mx-auto min-h-screen max-w-[480px] bg-gray-100 shadow-xl">
+        {screen === "home" && renderHomeView()}
+        {screen === "job" && renderJobView()}
+        {screen === "work" && renderWorkView()}
+        {screen === "report" && renderReportView()}
+        {screen === "sign" && renderSignView()}
+        {screen === "map" && (
+          <>
+            {header("نقشه")}
+            <div className="relative m-3 h-[70vh] overflow-hidden rounded-xl bg-[linear-gradient(90deg,#e5e7eb_1px,transparent_1px),linear-gradient(#e5e7eb_1px,transparent_1px)] bg-[size:24px_24px] bg-gray-50">
+              {todayJobs.slice(0, 9).map((j, i) => (
+                <button
+                  key={j.contract.id}
+                  type="button"
+                  onClick={() => { setSelected(j); setScreen("job"); }}
+                  style={{ left: `${15 + ((i * 37) % 70)}%`, top: `${15 + ((i * 53) % 70)}%` }}
+                  className="absolute -translate-x-1/2 -translate-y-full"
+                >
+                  <MapPin size={28} className="text-red-600 drop-shadow" />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {screen === "calendar" && simpleList(`تقویم — ${todayJalali()}`, jobs)}
+        {screen === "services" && simpleList("سرویس‌ها و خرابی‌ها", jobs)}
+
+        {["home", "map", "calendar", "services"].includes(screen) && renderBottomNav()}
+        {renderDrawer()}
+        {renderPayModal()}
+
+        {toast && (
+          <div className="fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-gray-900/90 px-4 py-2 text-[12px] text-white shadow-xl">
+            {toast}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

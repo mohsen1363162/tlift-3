@@ -1,0 +1,24 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  
+  # اگر فایل یا پوشه واقعی وجود دارد، مستقیماً لود شود
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+  
+  # در غیر این صورت تمامی درخواست‌ها به index.html هدایت شوند (برای پشتیبانی از React SPA)
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# تنظیمات کش و فشرده‌سازی برای عملکرد سریع‌تر در هاست
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresDefault "access plus 1 month"
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+</IfModule>
