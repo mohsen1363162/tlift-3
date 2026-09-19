@@ -211,6 +211,21 @@ function withTimeout(promise: Promise<any>, ms = 8000): Promise<any> {
   ]);
 }
 
+// تبدیل خطاهای خام به پیام قابل‌فهم برای کاربر
+function describeSyncError(e: unknown): string {
+  const raw = String((e as Error)?.message || e || "خطای نامشخص");
+  const s = raw.toLowerCase();
+  if (raw.includes("مهلت اتصال")) return "سرور به‌موقع پاسخ نداد (تایم‌اوت). اینترنت کند است یا دیتابیس در دسترس نیست.";
+  if (s.includes("failed to fetch") || s.includes("networkerror") || s.includes("load failed") || s.includes("network request failed"))
+    return "اتصال به سرور دیتابیس برقرار نشد؛ یا مسیر شبکه مسدود است یا پروژهٔ سوپابیس غیرفعال/حذف شده است.";
+  if (s.includes("could not find the table"))
+    return "جدول app_state در دیتابیس وجود ندارد — مایگریشن (supabase/migrations) هنوز اجرا نشده است.";
+  if (s.includes("invalid api key") || s.includes("jwt") || s.includes("apikey"))
+    return "کلید دسترسی سوپابیس (anon key) نامعتبر است.";
+  if (s.includes("paused")) return "پروژهٔ سوپابیس متوقف (Paused) شده است — از داشبورد سوپابیس آن را Restore کنید.";
+  return raw;
+}
+
 // ---- push (debounced per key) ----
 export function pushKey(key: string, data: unknown) {
   if (applyingRemote) return; // تغییر از سمت سرور آمده؛ بازتاب نده
@@ -260,13 +275,14 @@ async function flushKey(key: string): Promise<boolean> {
     });
     return true;
   } catch (e: unknown) {
+    console.error("[cloudSync] flushKey failed:", e);
     // در صف نگه‌دار و وضعیت را به آفلاین تغییر بده
     queue[key] = data;
     saveQueue(queue);
     setState({
       status: "offline",
       pending: Object.keys(queue).length,
-      error: String((e as Error)?.message || e),
+      error: describeSyncError(e),
     });
     clearTimeout(timers[key]);
     // تلاش مجدد با فاصله بر مبنای تایمر یا حداقل ۲۰ ثانیه
@@ -333,7 +349,8 @@ export async function pullAll(prefix = "tlift_"): Promise<boolean> {
     setState({ status: "online", lastSync: Date.now(), error: undefined });
     return true;
   } catch (e: unknown) {
-    setState({ status: "offline", error: String((e as Error)?.message || e) });
+    console.error("[cloudSync] pullAll failed:", e);
+    setState({ status: "offline", error: describeSyncError(e) });
     return false;
   }
 }
@@ -441,7 +458,8 @@ export async function syncNow(): Promise<{ success: boolean; message: string }> 
       };
     }
   } catch (err: unknown) {
-    setState({ status: "offline", error: String((err as Error)?.message || err) });
+    console.error("[cloudSync] syncNow failed:", err);
+    setState({ status: "offline", error: describeSyncError(err) });
     return {
       success: false,
       message: "خطا در برقراری ارتباط با سرور. اطلاعات در حافظه محلی محفوظ است.",
