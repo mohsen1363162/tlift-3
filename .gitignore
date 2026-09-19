@@ -28,3 +28,6 @@ dist-ssr
 .env.local
 .env.*.local
 .env.production
+
+# Local sync-api data (dev-mode twin of api/sync.php)
+.sync-data

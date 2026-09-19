@@ -38,6 +38,18 @@ const MANUAL_OFFLINE_KEY = "tlift_manual_offline_v1";
 const SYNC_INTERVAL_KEY = "tlift_sync_interval_minutes_v1";
 const DEFAULT_INTERVAL_MINUTES = 5; // پیش‌فرض: هر ۵ دقیقه
 
+// ── بک‌اند همگام‌سازی ──
+// پیش‌فرض: سرویس PHP روی هاست خود سایت (api/sync.php) — بدون نیاز به سوپابیس.
+// فقط اگر VITE_SUPABASE_URL تنظیم شده باشد از سوپابیس استفاده می‌شود.
+const SYNC_API =
+  (import.meta.env.VITE_SYNC_API as string | undefined) || "/api/sync.php";
+const SYNC_TOKEN =
+  (import.meta.env.VITE_SYNC_TOKEN as string | undefined) ||
+  "tlift-asemansara-1405";
+const USE_SUPABASE =
+  typeof import.meta.env.VITE_SUPABASE_URL === "string" &&
+  import.meta.env.VITE_SUPABASE_URL.trim() !== "";
+
 // خواندن مدت زمان همگام‌سازی
 export const getSyncInterval = (): number => {
   try {
@@ -215,15 +227,44 @@ function withTimeout(promise: Promise<any>, ms = 8000): Promise<any> {
 function describeSyncError(e: unknown): string {
   const raw = String((e as Error)?.message || e || "خطای نامشخص");
   const s = raw.toLowerCase();
-  if (raw.includes("مهلت اتصال")) return "سرور به‌موقع پاسخ نداد (تایم‌اوت). اینترنت کند است یا دیتابیس در دسترس نیست.";
+  if (raw.includes("مهلت اتصال")) return "سرور به‌موقع پاسخ نداد (تایم‌اوت). اینترنت کند است یا سرور همگام‌سازی در دسترس نیست.";
   if (s.includes("failed to fetch") || s.includes("networkerror") || s.includes("load failed") || s.includes("network request failed"))
-    return "اتصال به سرور دیتابیس برقرار نشد؛ یا مسیر شبکه مسدود است یا پروژهٔ سوپابیس غیرفعال/حذف شده است.";
+    return "اتصال به سرور همگام‌سازی برقرار نشد؛ اینترنت، فیلترشکن یا در دسترس نبودن سرور را بررسی کنید.";
+  if (s.includes("404") || raw.includes("پیدا نشد"))
+    return "فایل api/sync.php روی هاست پیدا نشد — نسخهٔ جدید خروجی سی‌پنل را آپلود کنید.";
+  if (s.includes("401") || s.includes("invalid token"))
+    return "توکن همگام‌سازی نامعتبر است — رمز داخل api/sync.php باید با VITE_SYNC_TOKEN یکسان باشد.";
   if (s.includes("could not find the table"))
     return "جدول app_state در دیتابیس وجود ندارد — مایگریشن (supabase/migrations) هنوز اجرا نشده است.";
   if (s.includes("invalid api key") || s.includes("jwt") || s.includes("apikey"))
     return "کلید دسترسی سوپابیس (anon key) نامعتبر است.";
   if (s.includes("paused")) return "پروژهٔ سوپابیس متوقف (Paused) شده است — از داشبورد سوپابیس آن را Restore کنید.";
   return raw;
+}
+
+// ── توابع سرویس PHP روی هاست (api/sync.php) ──
+async function apiUpsert(key: string, data: unknown, updated_at: string) {
+  const res = await withTimeout(
+    fetch(`${SYNC_API}?token=${encodeURIComponent(SYNC_TOKEN)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, data, updated_at }),
+    })
+  );
+  if (!res.ok) throw new Error(`خطای سرور همگام‌سازی (HTTP ${res.status})`);
+}
+
+async function apiSelectPrefix(
+  prefix: string
+): Promise<{ key: string; data: unknown; updated_at: string }[]> {
+  const res = await withTimeout(
+    fetch(
+      `${SYNC_API}?prefix=${encodeURIComponent(prefix)}&token=${encodeURIComponent(SYNC_TOKEN)}`
+    )
+  );
+  if (!res.ok) throw new Error(`خطای سرور همگام‌سازی (HTTP ${res.status})`);
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
 }
 
 // ---- push (debounced per key) ----
@@ -255,10 +296,14 @@ async function flushKey(key: string): Promise<boolean> {
   const updated_at = new Date().toISOString();
   try {
     setState({ status: "syncing" });
-    const res = await withTimeout(
-      db().upsert({ key, data, updated_at }, { onConflict: "key" })
-    );
-    if (res.error) throw res.error;
+    if (USE_SUPABASE) {
+      const res = await withTimeout(
+        db().upsert({ key, data, updated_at }, { onConflict: "key" })
+      );
+      if (res.error) throw res.error;
+    } else {
+      await apiUpsert(key, data, updated_at);
+    }
 
     delete queue[key];
     saveQueue(queue);
@@ -338,14 +383,18 @@ export async function pullAll(prefix = "tlift_"): Promise<boolean> {
   }
   try {
     setState({ status: "syncing" });
-    const res = await withTimeout(
-      db().select("key,data,updated_at").like("key", `${prefix}%`)
-    );
-    if (res.error) throw res.error;
+    let rows: { key: string; data: unknown; updated_at: string }[];
+    if (USE_SUPABASE) {
+      const res = await withTimeout(
+        db().select("key,data,updated_at").like("key", `${prefix}%`)
+      );
+      if (res.error) throw res.error;
+      rows = (res.data || []) as { key: string; data: unknown; updated_at: string }[];
+    } else {
+      rows = await apiSelectPrefix(prefix);
+    }
 
-    (res.data || []).forEach((r: { key: string; data: unknown; updated_at: string }) =>
-      applyRemote(r.key, r.data, r.updated_at)
-    );
+    rows.forEach((r) => applyRemote(r.key, r.data, r.updated_at));
     setState({ status: "online", lastSync: Date.now(), error: undefined });
     return true;
   } catch (e: unknown) {
@@ -395,7 +444,8 @@ export async function startCloudSync() {
     if (Object.keys(queue).length > 0) {
       await flushAll();
     }
-    startRealtime();
+    // realtime فقط در حالت سوپابیس وجود دارد؛ در حالت هاست، همگام‌سازی دوره‌ای کافی است
+    if (USE_SUPABASE) startRealtime();
   } else {
     setState({ status: "offline" });
   }

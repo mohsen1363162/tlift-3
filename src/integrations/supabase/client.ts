@@ -29,16 +29,20 @@ function sanitizeKey(key?: unknown): string {
 const SUPABASE_URL = sanitizeUrl(import.meta.env.VITE_SUPABASE_URL);
 const SUPABASE_PUBLISHABLE_KEY = sanitizeKey(import.meta.env.VITE_SUPABASE_ANON_KEY);
 
-// هشدار در محیط توسعه: بدون تنظیم .env اتصال به دیتابیس پروداکشن برقرار می‌شود
+// هشدار در محیط توسعه: حالت سوپابیس فعال است ولی کلید وارد نشده
 const isUnsetEnv = (v: unknown) => {
   if (typeof v !== 'string') return true;
   const t = v.trim();
   return !t || t === 'undefined' || t === 'null';
 };
-if (import.meta.env.DEV && (isUnsetEnv(import.meta.env.VITE_SUPABASE_URL) || isUnsetEnv(import.meta.env.VITE_SUPABASE_ANON_KEY))) {
+if (
+  import.meta.env.DEV &&
+  !isUnsetEnv(import.meta.env.VITE_SUPABASE_URL) &&
+  isUnsetEnv(import.meta.env.VITE_SUPABASE_ANON_KEY)
+) {
   console.warn(
-    '[tlift] متغیرهای محیطی سوپابیس تنظیم نشده‌اند؛ اپ به دیتابیس پروداکشن متصل است. ' +
-    'برای جلوگیری از تغییر داده‌های واقعی، فایل .env را بر اساس .env.development تکمیل کنید.'
+    '[tlift] آدرس سوپابیس تنظیم شده ولی کلید (anon key) خالی است؛ به کلید پیش‌فرض پروژهٔ اصلی وصل می‌شوید. ' +
+    'مقدار VITE_SUPABASE_ANON_KEY را در .env تکمیل کنید.'
   );
 }
 
