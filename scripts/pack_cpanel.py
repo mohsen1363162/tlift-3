@@ -25,8 +25,7 @@ def make_zip(source_dir, output_files):
     return True
 
 if __name__ == "__main__":
+    # یک فایل فشردهٔ واحد برای خروجی سی‌پنل (لینک‌های دیگر به همین فایل اشاره می‌کنند)
     make_zip('dist', [
-        'public/public_html.zip',
-        'public/cpanel_public_html.zip',
-        'public_html.zip'
+        'public/public_html.zip'
     ])

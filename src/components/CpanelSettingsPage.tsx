@@ -34,7 +34,8 @@ export default function CpanelSettingsPage({
     setDownloadProgress(`در حال دریافت فایل ${filename}...`);
 
     try {
-      const fileUrl = `/${filename}?t=${Date.now()}`;
+      // هر دو نام به یک فایل یکسان اشاره دارند؛ فقط نام ذخیره‌شده متفاوت است
+      const fileUrl = `/public_html.zip?t=${Date.now()}`;
       const res = await fetch(fileUrl);
       
       if (!res.ok) {
@@ -207,7 +208,7 @@ export default function CpanelSettingsPage({
               </a>
 
               <a
-                href="/cpanel_public_html.zip"
+                href="/public_html.zip"
                 download="cpanel_public_html.zip"
                 target="_blank"
                 rel="noreferrer"

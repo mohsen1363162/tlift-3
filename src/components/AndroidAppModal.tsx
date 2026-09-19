@@ -138,7 +138,7 @@ export default function AndroidAppModal({
               </a>
 
               <a
-                href="/asemansara.apk"
+                href="/Telift.apk"
                 download="asemansara.apk"
                 target="_blank"
                 rel="noreferrer"

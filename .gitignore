@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files — only .env.example and .env.development are tracked
+.env
+.env.local
+.env.*.local
+.env.production
