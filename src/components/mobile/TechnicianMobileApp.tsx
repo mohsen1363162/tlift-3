@@ -60,7 +60,9 @@ import {
   getStoredMonthlySeconds,
   addWorkSessionSeconds,
   formatDurationPersian,
+  JALALI_MONTH_NAMES,
 } from "../../utils/workHoursTracker";
+import { getShamsiDaysInMonth, getShamsiFirstDayOfWeek } from "../../utils/dateConverter";
 import { checkForAppUpdates, APP_VERSION } from "../../utils/appUpdater";
 
 /* -------------------------------------------------------------------------- */
@@ -74,6 +76,20 @@ const fmtDur = (sec: number) =>
     /\d/g,
     (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]
   );
+const toEnglishDigits = (value: string) =>
+  value.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+const normalizeJalaliDate = (value?: string) => {
+  if (!value) return "";
+  const parts = toEnglishDigits(value).match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  return parts
+    ? `${parts[1]}/${String(Number(parts[2])).padStart(2, "0")}/${String(Number(parts[3])).padStart(2, "0")}`
+    : "";
+};
+const monthNumber = (name: string) => Math.max(1, JALALI_MONTH_NAMES.indexOf(name) + 1);
+const jobDate = (job: Job) =>
+  normalizeJalaliDate(job.month.plannedDate || job.month.date) ||
+  `${job.month.y}/${String(monthNumber(job.month.m)).padStart(2, "0")}/${String(job.month.id || 1).padStart(2, "0")}`;
+
 const nowTime = () => {
   const d = new Date();
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -221,6 +237,20 @@ export default function TechnicianMobileApp({
   }, [contracts, tick % 5 === 0 ? tick : 0]);
   const todayJobs = jobs.filter((j) => !j.overdue);
   const pastJobs = jobs.filter((j) => j.overdue);
+
+  const initialCalendar = getCurrentJalaliMonthInfo();
+  const [calendarYear, setCalendarYear] = useState(initialCalendar.year);
+  const [calendarMonth, setCalendarMonth] = useState(initialCalendar.month);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(
+    normalizeJalaliDate(
+      new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date())
+    )
+  );
+  const [serviceQuery, setServiceQuery] = useState("");
 
   const [selected, setSelected] = useState<Job | null>(null);
 
@@ -549,7 +579,7 @@ export default function TechnicianMobileApp({
         {[
           { l: "لیست خرابی", i: AlertTriangle, c: "text-red-500", badge: 1, go: () => setScreen("services") },
           { l: "ثبت خرابی", i: Plus, c: "text-orange-500", go: () => notify("فرم ثبت خرابی") },
-          { l: "ثبت سرویس", i: Wrench, c: "text-blue-600", go: () => todayJobs[0] && startService(todayJobs[0]) },
+          { l: "ثبت سرویس", i: Wrench, c: "text-blue-600", go: () => setScreen("services") },
         ].map((b) => (
           <button
             key={b.l}
@@ -1067,6 +1097,108 @@ export default function TechnicianMobileApp({
     </>
   );
 
+  const renderCalendarView = () => {
+    const days = getShamsiDaysInMonth(calendarYear, calendarMonth);
+    const offset = getShamsiFirstDayOfWeek(calendarYear, calendarMonth);
+    const datePrefix = `${calendarYear}/${String(calendarMonth).padStart(2, "0")}/`;
+    const jobsByDate = new Map<string, Job[]>();
+    jobs.forEach((job) => {
+      const date = jobDate(job);
+      jobsByDate.set(date, [...(jobsByDate.get(date) || []), job]);
+    });
+    const selectedJobs = jobsByDate.get(selectedCalendarDate) || [];
+    const changeMonth = (delta: number) => {
+      let month = calendarMonth + delta;
+      let year = calendarYear;
+      if (month > 12) { month = 1; year += 1; }
+      if (month < 1) { month = 12; year -= 1; }
+      setCalendarMonth(month);
+      setCalendarYear(year);
+      setSelectedCalendarDate(`${year}/${String(month).padStart(2, "0")}/01`);
+    };
+
+    return (
+      <>
+        {header("تقویم سرویس‌ها")}
+        <div className="m-3 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+          <div className="flex items-center justify-between bg-gradient-to-l from-blue-600 to-sky-500 px-3 py-3 text-white">
+            <button type="button" onClick={() => changeMonth(-1)} className="rounded-full bg-white/15 p-2"><ChevronRight size={18} /></button>
+            <div className="text-center">
+              <div className="text-[14px] font-bold">{JALALI_MONTH_NAMES[calendarMonth - 1]} {fa(calendarYear)}</div>
+              <div className="mt-0.5 text-[10px] text-blue-100">روزهای رنگی دارای سرویس هستند</div>
+            </div>
+            <button type="button" onClick={() => changeMonth(1)} className="rounded-full bg-white/15 p-2"><ChevronLeft size={18} /></button>
+          </div>
+          <div className="grid grid-cols-7 bg-blue-50 py-2 text-center text-[11px] font-bold text-blue-700">
+            {["ش", "ی", "د", "س", "چ", "پ", "ج"].map((day) => <span key={day}>{day}</span>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1 p-2">
+            {Array.from({ length: offset }).map((_, i) => <div key={`empty-${i}`} />)}
+            {Array.from({ length: days }).map((_, index) => {
+              const day = index + 1;
+              const date = `${datePrefix}${String(day).padStart(2, "0")}`;
+              const hasJobs = jobsByDate.has(date);
+              const active = selectedCalendarDate === date;
+              return (
+                <button
+                  key={date}
+                  type="button"
+                  onClick={() => setSelectedCalendarDate(date)}
+                  className={`relative flex aspect-square items-center justify-center rounded-xl text-[12px] font-semibold transition ${
+                    active ? "bg-blue-600 text-white shadow-md" : hasJobs ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300" : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {fa(day)}
+                  {hasJobs && <span className={`absolute bottom-1 h-1.5 w-1.5 rounded-full ${active ? "bg-white" : "bg-emerald-500"}`} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mx-3 mb-2 flex items-center justify-between">
+          <h3 className="text-[13px] font-bold text-gray-800">سرویس‌های {selectedCalendarDate.replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)])}</h3>
+          <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] text-blue-700">{fa(selectedJobs.length)} سرویس</span>
+        </div>
+        <div className="mx-3 overflow-hidden rounded-xl border bg-white">
+          {selectedJobs.map(jobCard)}
+          {selectedJobs.length === 0 && <div className="p-8 text-center text-[12px] text-gray-400">برای این روز سرویسی برنامه‌ریزی نشده است</div>}
+        </div>
+        <div className="h-20" />
+      </>
+    );
+  };
+
+  const renderServicesView = () => {
+    const query = serviceQuery.trim().toLowerCase();
+    const filtered = jobs.filter((job) =>
+      !query ||
+      job.contract.building.toLowerCase().includes(query) ||
+      job.contract.manager.toLowerCase().includes(query) ||
+      String(job.contract.no).includes(query) ||
+      (job.contract.address || "").toLowerCase().includes(query)
+    );
+    return (
+      <>
+        {header("انتخاب سرویس")}
+        <div className="sticky top-0 z-10 border-b bg-gray-50/95 p-3 backdrop-blur-sm">
+          <div className="relative">
+            <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={serviceQuery}
+              onChange={(event) => setServiceQuery(event.target.value)}
+              placeholder="جستجو با نام ساختمان، مشتری یا شماره قرارداد..."
+              className="w-full rounded-xl border border-gray-200 bg-white py-3 pr-10 pl-3 text-[12px] outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <div className="mt-2 text-[10.5px] text-gray-500">ابتدا سرویس را انتخاب کنید؛ سپس در صفحه جزئیات «شروع سرویس» را بزنید.</div>
+        </div>
+        <div className="mt-2 bg-white">{filtered.map(jobCard)}</div>
+        {filtered.length === 0 && <div className="py-12 text-center text-[12px] text-gray-400">سرویسی با این مشخصات پیدا نشد</div>}
+        <div className="h-20" />
+      </>
+    );
+  };
+
   const renderBottomNav = () => (
     <div className="fixed inset-x-0 bottom-0 mx-auto flex max-w-[480px] justify-around border-t bg-white py-1.5">
       {[
@@ -1238,8 +1370,8 @@ export default function TechnicianMobileApp({
             </div>
           </>
         )}
-        {screen === "calendar" && simpleList(`تقویم — ${todayJalali()}`, jobs)}
-        {screen === "services" && simpleList("سرویس‌ها و خرابی‌ها", jobs)}
+        {screen === "calendar" && renderCalendarView()}
+        {screen === "services" && renderServicesView()}
 
         {["home", "map", "calendar", "services"].includes(screen) && renderBottomNav()}
         {renderDrawer()}
