@@ -106,7 +106,27 @@ const LS = {
 const MAX_WORK_SESSION_SECONDS = 12 * 60 * 60;
 
 type Job = { contract: Contract; month: MonthService; overdue: boolean };
-type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services";
+type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "offlineService";
+
+type OfflineServiceDraft = {
+  id: string;
+  customerName: string;
+  createdAt: number;
+  doneDate: string;
+  inTime: string;
+  outTime: string;
+  report: string;
+  reminder: string;
+  followup: string;
+  checklistResults: Record<number, ServiceChecklistStatus>;
+  partsList: ServicePartItem[];
+  faultsList: string[];
+  wage: number;
+  trip: number;
+  attachments: string[];
+};
+
+const OFFLINE_DRAFTS_KEY = "tlift_unassigned_offline_services_v1";
 
 export type TechnicianInfo = { name: string; phone?: string; code?: string; company?: string };
 
@@ -150,6 +170,16 @@ export default function TechnicianMobileApp({
   const [drawer, setDrawer] = useState(false);
   const [androidModal, setAndroidModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [offlineCustomerName, setOfflineCustomerName] = useState("");
+  const [isAdhocOfflineService, setIsAdhocOfflineService] = useState(false);
+  const [offlineDrafts, setOfflineDrafts] = useState<OfflineServiceDraft[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(OFFLINE_DRAFTS_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [draftMappings, setDraftMappings] = useState<Record<string, string>>({});
   const notify = (m: string) => {
     setToast(m);
     setTimeout(() => setToast((c) => (c === m ? null : c)), 2600);
@@ -303,7 +333,43 @@ export default function TechnicianMobileApp({
     setManagerPresent(true);
   };
 
+  const saveOfflineDrafts = (drafts: OfflineServiceDraft[]) => {
+    setOfflineDrafts(drafts);
+    localStorage.setItem(OFFLINE_DRAFTS_KEY, JSON.stringify(drafts));
+  };
+
+  const startOfflineService = () => {
+    const name = offlineCustomerName.trim();
+    if (!name) return notify("ابتدا نام مشتری یا ساختمان را وارد کنید");
+    const temporaryContract: Contract = {
+      id: -Date.now(),
+      no: "آفلاین",
+      building: name,
+      manager: name,
+      zone: "ثبت آفلاین",
+      start: "—",
+      end: "—",
+      kind: "general",
+    };
+    const temporaryMonth: MonthService = {
+      id: -Date.now(),
+      m: getCurrentJalaliMonthInfo().monthName,
+      y: getCurrentJalaliMonthInfo().year,
+      done: false,
+      amount: 0,
+      paid: false,
+    };
+    resetWork();
+    setIsAdhocOfflineService(true);
+    setSelected({ contract: temporaryContract, month: temporaryMonth, overdue: false });
+    setJobStart(Date.now());
+    setJobStartClock(nowTime());
+    setScreen("work");
+    if (!dayStart) toggleDay();
+  };
+
   const startService = (j: Job) => {
+    setIsAdhocOfflineService(false);
     setSelected(j);
     setJobStart(Date.now());
     setJobStartClock(nowTime());
@@ -314,6 +380,35 @@ export default function TechnicianMobileApp({
   const finishService = () => {
     if (!selected) return;
     const faultsList = faults.map((f) => `${f.text}${f.fixed ? " (رفع شد)" : ""}`);
+
+    if (isAdhocOfflineService) {
+      const draft: OfflineServiceDraft = {
+        id: `offline-${Date.now()}`,
+        customerName: selected.contract.building,
+        createdAt: Date.now(),
+        doneDate: todayJalali(),
+        inTime: jobStartClock,
+        outTime: nowTime(),
+        report,
+        reminder,
+        followup,
+        checklistResults: results,
+        partsList: usedParts,
+        faultsList,
+        wage,
+        trip,
+        attachments: photos,
+      };
+      saveOfflineDrafts([draft, ...offlineDrafts]);
+      notify("سرویس آفلاین ذخیره شد؛ پس از اتصال، آن را به قرارداد مربوط متصل کنید.");
+      resetWork();
+      setSelected(null);
+      setIsAdhocOfflineService(false);
+      setOfflineCustomerName("");
+      setScreen("offlineService");
+      return;
+    }
+
     appStore.addServiceSubmission(selected.contract.id, selected.month.id, {
       techs: [technician.name],
       doneBy: technician.name,
@@ -575,11 +670,12 @@ export default function TechnicianMobileApp({
   const renderHomeView = () => (
     <>
       {header()}
-      <div className="grid grid-cols-3 gap-2 p-3">
+      <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4">
         {[
           { l: "لیست خرابی", i: AlertTriangle, c: "text-red-500", badge: 1, go: () => setScreen("services") },
           { l: "ثبت خرابی", i: Plus, c: "text-orange-500", go: () => notify("فرم ثبت خرابی") },
           { l: "ثبت سرویس", i: Wrench, c: "text-blue-600", go: () => setScreen("services") },
+          { l: "ثبت سرویس آفلاین", i: CloudOff, c: "text-amber-600", badge: offlineDrafts.length || undefined, go: () => setScreen("offlineService") },
         ].map((b) => (
           <button
             key={b.l}
@@ -1088,6 +1184,112 @@ export default function TechnicianMobileApp({
     </div>
   );
 
+  const attachOfflineDraft = (draft: OfflineServiceDraft) => {
+    if (!navigator.onLine) return notify("برای انتقال این سرویس ابتدا به اینترنت متصل شوید");
+    const mapping = draftMappings[draft.id];
+    if (!mapping) return notify("قرارداد یا سرویس مقصد را انتخاب کنید");
+    const [contractId, monthId] = mapping.split(":").map(Number);
+    const target = jobs.find((job) => job.contract.id === contractId && job.month.id === monthId);
+    if (!target) return notify("سرویس انتخاب‌شده پیدا نشد");
+
+    const partsTotal = draft.partsList.reduce((sum, part) => sum + part.qty * part.price, 0);
+    appStore.addServiceSubmission(contractId, monthId, {
+      techs: [technician.name],
+      doneBy: technician.name,
+      doneDate: draft.doneDate,
+      inTime: draft.inTime,
+      outTime: draft.outTime,
+      report: draft.report,
+      reminder: draft.reminder,
+      total: target.month.amount + partsTotal + draft.wage + draft.trip,
+      parts: partsTotal,
+      wage: draft.wage,
+      trip: draft.trip,
+      discount: 0,
+      faults: draft.faultsList.length,
+      faultsList: draft.faultsList,
+      partsList: draft.partsList,
+    });
+    appStore.updateMonthService(contractId, monthId, {
+      checklistResults: draft.checklistResults,
+      customerFollowup: draft.followup,
+      attachments: draft.attachments,
+    });
+    saveOfflineDrafts(offlineDrafts.filter((item) => item.id !== draft.id));
+    setDraftMappings((current) => {
+      const next = { ...current };
+      delete next[draft.id];
+      return next;
+    });
+    syncNow();
+    notify(`سرویس آفلاین به «${target.contract.building.replace(/^\*\s*/, "")}» منتقل شد`);
+  };
+
+  const renderOfflineServiceView = () => (
+    <>
+      {header("ثبت سرویس آفلاین", () => setScreen("home"))}
+      <div className="m-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <div className="flex items-center gap-2 text-[13px] font-bold text-amber-900">
+          <CloudOff size={19} /> شروع سرویس بدون اینترنت
+        </div>
+        <p className="mt-1 text-[11px] leading-5 text-amber-800">
+          فقط نام مشتری یا ساختمان را وارد کنید. تمام گزارش، چک‌لیست، قطعات و خرابی‌ها روی همین گوشی ذخیره می‌شود.
+        </p>
+        <input
+          value={offlineCustomerName}
+          onChange={(event) => setOfflineCustomerName(event.target.value)}
+          placeholder="نام مشتری یا ساختمان..."
+          className="mt-3 w-full rounded-xl border border-amber-200 bg-white px-3 py-3 text-[12px] outline-none focus:border-amber-500"
+        />
+        <button type="button" onClick={startOfflineService} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 py-3 text-[13px] font-bold text-white">
+          <Play size={15} fill="white" /> شروع ثبت آفلاین
+        </button>
+      </div>
+
+      <div className="mx-3 mb-2 flex items-center justify-between">
+        <h3 className="text-[13px] font-bold text-gray-800">صف سرویس‌های آفلاین</h3>
+        <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800">{fa(offlineDrafts.length)} مورد</span>
+      </div>
+      <div className="mx-3 space-y-2 pb-20">
+        {offlineDrafts.map((draft) => (
+          <div key={draft.id} className="rounded-xl border bg-white p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="text-[13px] font-bold text-gray-800">{draft.customerName}</div>
+                <div className="mt-1 text-[10.5px] text-gray-500">{draft.doneDate} · {draft.inTime} تا {draft.outTime}</div>
+              </div>
+              <span className={`rounded-full px-2 py-1 text-[9.5px] font-bold ${navigator.onLine ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
+                {navigator.onLine ? "آماده انتقال" : "منتظر اینترنت"}
+              </span>
+            </div>
+            <label className="mt-3 block text-[10.5px] text-gray-500">این گزارش متعلق به کدام سرویس است؟</label>
+            <select
+              value={draftMappings[draft.id] || ""}
+              onChange={(event) => setDraftMappings((current) => ({ ...current, [draft.id]: event.target.value }))}
+              className="mt-1 w-full rounded-lg border bg-white p-2.5 text-[11px] outline-none focus:border-blue-400"
+            >
+              <option value="">انتخاب مشتری و سرویس مقصد...</option>
+              {jobs.map((job) => (
+                <option key={`${job.contract.id}:${job.month.id}`} value={`${job.contract.id}:${job.month.id}`}>
+                  {job.contract.building.replace(/^\*\s*/, "")} — {job.month.m} {job.month.y} — قرارداد {job.contract.no}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => attachOfflineDraft(draft)}
+              disabled={!navigator.onLine || !draftMappings[draft.id]}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2.5 text-[12px] font-bold text-white disabled:bg-gray-300"
+            >
+              <Cloud size={15} /> اتصال به سرویس و ثبت آنلاین
+            </button>
+          </div>
+        ))}
+        {offlineDrafts.length === 0 && <div className="rounded-xl border border-dashed bg-white py-10 text-center text-[12px] text-gray-400">سرویس آفلاینی در صف نیست</div>}
+      </div>
+    </>
+  );
+
   const simpleList = (title: string, list: Job[]) => (
     <>
       {header(title)}
@@ -1372,8 +1574,9 @@ export default function TechnicianMobileApp({
         )}
         {screen === "calendar" && renderCalendarView()}
         {screen === "services" && renderServicesView()}
+        {screen === "offlineService" && renderOfflineServiceView()}
 
-        {["home", "map", "calendar", "services"].includes(screen) && renderBottomNav()}
+        {["home", "map", "calendar", "services", "offlineService"].includes(screen) && renderBottomNav()}
         {renderDrawer()}
         {renderPayModal()}
         <AndroidAppModal open={androidModal} onClose={() => setAndroidModal(false)} />
