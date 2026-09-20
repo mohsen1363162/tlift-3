@@ -87,6 +87,7 @@ const LS = {
   day: "tlift_mobile_day_start",
   activeJob: "tlift_mobile_active_job",
 };
+const MAX_WORK_SESSION_SECONDS = 12 * 60 * 60;
 
 type Job = { contract: Contract; month: MonthService; overdue: boolean };
 type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services";
@@ -153,12 +154,33 @@ export default function TechnicianMobileApp({
   const [monthBaseSec, setMonthBaseSec] = useState<number>(() => getStoredMonthlySeconds());
   const currentMonthInfo = useMemo(() => getCurrentJalaliMonthInfo(), [Math.floor(tick / 60)]);
   const daySec = dayStart ? Math.floor((Date.now() - dayStart) / 1000) : 0;
-  const currentMonthSec = monthBaseSec + (dayStart ? daySec : 0);
+  const currentMonthSec = monthBaseSec + (dayStart ? Math.min(daySec, MAX_WORK_SESSION_SECONDS) : 0);
+  const autoStopHandled = useRef(false);
+
+  // هیچ نوبت کاری بیشتر از ۱۲ ساعت باز نمی‌ماند. این کنترل هم در زمان
+  // باز بودن برنامه و هم بلافاصله پس از بازگشت کاربر به برنامه اجرا می‌شود.
+  useEffect(() => {
+    if (!dayStart || daySec < MAX_WORK_SESSION_SECONDS) {
+      if (!dayStart) autoStopHandled.current = false;
+      return;
+    }
+    if (autoStopHandled.current) return;
+    autoStopHandled.current = true;
+
+    localStorage.removeItem(LS.day);
+    const newMonthTotal = addWorkSessionSeconds(MAX_WORK_SESSION_SECONDS);
+    setMonthBaseSec(newMonthTotal);
+    setDayStart(null);
+    notify("نوبت کاری پس از رسیدن به سقف ۱۲ ساعت به‌صورت خودکار پایان یافت.");
+  }, [dayStart, daySec]);
 
   const toggleDay = () => {
     if (dayStart) {
       localStorage.removeItem(LS.day);
-      const elapsed = Math.floor((Date.now() - dayStart) / 1000);
+      const elapsed = Math.min(
+        MAX_WORK_SESSION_SECONDS,
+        Math.floor((Date.now() - dayStart) / 1000)
+      );
       const newMonthTotal = addWorkSessionSeconds(elapsed);
       setMonthBaseSec(newMonthTotal);
       setDayStart(null);

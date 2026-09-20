@@ -2,7 +2,7 @@
  * مدیریت بروزرسانی و آپدیت نرم‌افزار (تلیفت همراه و نسخه دسکتاپ)
  */
 
-export const APP_VERSION = "3.5.3";
+export const APP_VERSION = "3.5.4";
 export const APP_BUILD_DATE = "شهریور ۱۴۰۵";
 
 export interface UpdateCheckResult {
