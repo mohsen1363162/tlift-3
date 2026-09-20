@@ -47,6 +47,7 @@ import {
   useContracts,
   useChecklist,
   useChecklistCategories,
+  useActiveServiceAssignments,
   MonthService,
   ServiceChecklistStatus,
   ServicePartItem,
@@ -144,6 +145,7 @@ export default function TechnicianMobileApp({
   onSignOut: () => void;
 }) {
   const contracts = useContracts();
+  const activeServiceAssignments = useActiveServiceAssignments();
   const checklist = useChecklist();
   const categories = useChecklistCategories();
   const parts = useParts();
@@ -339,6 +341,11 @@ export default function TechnicianMobileApp({
   };
 
   const startOfflineService = () => {
+    const myActive = activeServiceAssignments.find((item) => item.technicianName === technician.name);
+    if (myActive || jobStart) {
+      notify(`ابتدا سرویس فعال ${myActive ? `«${myActive.buildingName}»` : "فعلی"} را به پایان برسانید`);
+      return;
+    }
     const name = offlineCustomerName.trim();
     if (!name) return notify("ابتدا نام مشتری یا ساختمان را وارد کنید");
     const temporaryContract: Contract = {
@@ -369,10 +376,34 @@ export default function TechnicianMobileApp({
   };
 
   const startService = (j: Job) => {
+    const myActive = activeServiceAssignments.find(
+      (item) => item.technicianName === technician.name
+    );
+    if (myActive && !(myActive.contractId === j.contract.id && myActive.monthId === j.month.id)) {
+      notify(`ابتدا سرویس فعال «${myActive.buildingName}» را به پایان برسانید`);
+      return;
+    }
+    const serviceActive = activeServiceAssignments.find(
+      (item) => item.contractId === j.contract.id && item.monthId === j.month.id
+    );
+    if (serviceActive && serviceActive.technicianName !== technician.name) {
+      notify(`این سرویس در حال انجام توسط ${serviceActive.technicianName} است`);
+      return;
+    }
+
     setIsAdhocOfflineService(false);
     setSelected(j);
-    setJobStart(Date.now());
+    const startedAt = serviceActive?.startedAt || Date.now();
+    setJobStart(startedAt);
     setJobStartClock(nowTime());
+    appStore.startActiveService({
+      contractId: j.contract.id,
+      monthId: j.month.id,
+      technicianName: technician.name,
+      startedAt,
+      buildingName: j.contract.building.replace(/^\*\s*/, ""),
+    });
+    localStorage.setItem(LS.activeJob, JSON.stringify({ contractId: j.contract.id, monthId: j.month.id, startedAt }));
     setScreen("work");
     if (!dayStart) toggleDay();
   };
@@ -452,6 +483,10 @@ export default function TechnicianMobileApp({
         },
         selected.month.id
       );
+    }
+    if (selected) {
+      appStore.finishActiveService(selected.contract.id, selected.month.id, technician.name);
+      localStorage.removeItem(LS.activeJob);
     }
     setPayModal(false);
     notify(
@@ -632,7 +667,11 @@ export default function TechnicianMobileApp({
     </div>
   );
 
-  const jobCard = (j: Job) => (
+  const jobCard = (j: Job) => {
+    const activeAssignment = activeServiceAssignments.find(
+      (item) => item.contractId === j.contract.id && item.monthId === j.month.id
+    );
+    return (
     <button
       key={j.contract.id}
       type="button"
@@ -654,18 +693,25 @@ export default function TechnicianMobileApp({
           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
             سرویس {j.month.m} {j.month.y}
           </span>
-          <span
-            className={`rounded px-1.5 py-0.5 ${
-              j.overdue ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-700"
-            }`}
-          >
-            {j.overdue ? "تاریخ گذشته" : "امروز"}
-          </span>
+          {activeAssignment ? (
+            <span className="rounded bg-blue-100 px-1.5 py-0.5 font-bold text-blue-700">
+              در حال انجام توسط {activeAssignment.technicianName}
+            </span>
+          ) : (
+            <span
+              className={`rounded px-1.5 py-0.5 ${
+                j.overdue ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-700"
+              }`}
+            >
+              {j.overdue ? "تاریخ گذشته" : "امروز"}
+            </span>
+          )}
         </div>
       </div>
       <ChevronLeft size={18} className="text-gray-400" />
     </button>
-  );
+    );
+  };
 
   const renderHomeView = () => (
     <>

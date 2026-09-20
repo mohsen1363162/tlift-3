@@ -241,6 +241,14 @@ const INITIAL_MARKETING_ITEMS: MarketingItem[] = [
   { id: "file:لیست مشتریان", name: "لیست مشتریان", section: "پرونده", groupTitle: "مشتریان" },
 ];
 
+export type ActiveServiceAssignment = {
+  contractId: number;
+  monthId: number;
+  technicianName: string;
+  startedAt: number;
+  buildingName: string;
+};
+
 export type ScheduledService = {
   id: string;
   date: string; // e.g. "1405-06-01"
@@ -662,6 +670,7 @@ let customers: Customer[] = loadStorage<Customer[]>("tlift_customers", initialCu
 let staff: Staff[] = loadStorage<Staff[]>("tlift_staff", initialStaff);
 let marketingItems: MarketingItem[] = loadStorage<MarketingItem[]>("tlift_marketing_items", INITIAL_MARKETING_ITEMS);
 let scheduledServices: ScheduledService[] = loadStorage<ScheduledService[]>("tlift_scheduled_services", INITIAL_SCHEDULED_SERVICES);
+let activeServiceAssignments: ActiveServiceAssignment[] = loadStorage<ActiveServiceAssignment[]>("tlift_active_service_assignments_v1", []);
 let zones: ZoneItem[] = loadStorage<ZoneItem[]>("tlift_zones_v2", INITIAL_ZONES);
 let checklistItems: ChecklistItem[] = loadStorage<ChecklistItem[]>("tlift_checklist_v1", INITIAL_CHECKLIST);
 let checklistCategories: string[] = loadStorage<string[]>("tlift_checklist_categories_v1", INITIAL_CHECKLIST_CATEGORIES);
@@ -795,6 +804,9 @@ registerApplier((key, data) => {
       break;
     case "tlift_scheduled_services":
       scheduledServices = data as ScheduledService[];
+      break;
+    case "tlift_active_service_assignments_v1":
+      activeServiceAssignments = data as ActiveServiceAssignment[];
       break;
     case "tlift_zones_v2":
       zones = data as ZoneItem[];
@@ -1462,6 +1474,29 @@ export const appStore = {
     saveStorage("tlift_marketing_items", marketingItems);
     notifyListeners();
   },
+  // ACTIVE SERVICE LOCKS
+  getActiveServiceAssignments: () => activeServiceAssignments,
+  startActiveService: (assignment: ActiveServiceAssignment) => {
+    // هر تکنسین فقط یک کار فعال و هر سرویس فقط یک مجری فعال دارد.
+    activeServiceAssignments = activeServiceAssignments.filter(
+      (item) =>
+        item.technicianName !== assignment.technicianName &&
+        !(item.contractId === assignment.contractId && item.monthId === assignment.monthId)
+    );
+    activeServiceAssignments = [...activeServiceAssignments, assignment];
+    saveStorage("tlift_active_service_assignments_v1", activeServiceAssignments);
+    notifyListeners();
+  },
+  finishActiveService: (contractId: number, monthId: number, technicianName?: string) => {
+    activeServiceAssignments = activeServiceAssignments.filter(
+      (item) =>
+        !(item.contractId === contractId && item.monthId === monthId) &&
+        !(technicianName && item.technicianName === technicianName)
+    );
+    saveStorage("tlift_active_service_assignments_v1", activeServiceAssignments);
+    notifyListeners();
+  },
+
   // SCHEDULED SERVICES
   getScheduledServices: () => scheduledServices,
   toggleScheduledServiceStatus: (id: string) => {
@@ -1670,6 +1705,16 @@ export function useContracts() {
       return () => listeners.delete(callback);
     },
     () => contracts
+  );
+}
+
+export function useActiveServiceAssignments() {
+  return useSyncExternalStore(
+    (callback) => {
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    },
+    () => activeServiceAssignments
   );
 }
 
