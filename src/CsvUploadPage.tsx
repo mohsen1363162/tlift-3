@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import type { Theme } from "./theme";
+import { parseBuildingsCsv } from "./utils/buildingsCsv";
 import { appStore, useContracts, useCustomers } from "./store";
 import {
   parseContractsCsv,
@@ -46,7 +47,7 @@ export default function CsvUploadPage({
   onOpenContracts,
   onOpenCustomers,
 }: CsvUploadPageProps) {
-  const [activeDataset, setActiveDataset] = useState<"contracts" | "customers">(initialType);
+  const [activeDataset, setActiveDataset] = useState<"contracts" | "customers" | "buildings">(initialType);
 
   useEffect(() => {
     if (initialType) {
@@ -65,6 +66,9 @@ export default function CsvUploadPage({
   const [customersCsv, setCustomersCsv] = useState<string>("");
   const [customersFileName, setCustomersFileName] = useState<string>("هنوز فایلی انتخاب نشده است");
   const [customersFileSize, setCustomersFileSize] = useState<string>("0 KB");
+  const [buildingsCsv, setBuildingsCsv] = useState("");
+  const [buildingsFileName, setBuildingsFileName] = useState("هنوز فایلی انتخاب نشده است");
+  const parsedBuildingsRows = useMemo(() => parseBuildingsCsv(buildingsCsv), [buildingsCsv]);
 
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [confirmReset, setConfirmReset] = useState(false);
@@ -103,7 +107,7 @@ export default function CsvUploadPage({
   }, [customersCsv]);
 
   // Current active rows based on dataset
-  const activeRowsCount = activeDataset === "contracts" ? parsedContractsRows.length : parsedCustomersRows.length;
+  const activeRowsCount = activeDataset === "contracts" ? parsedContractsRows.length : activeDataset === "customers" ? parsedCustomersRows.length : parsedBuildingsRows.length;
 
   // Filtered rows for preview
   const filteredContractRows = useMemo(() => {
@@ -166,10 +170,13 @@ export default function CsvUploadPage({
           setContractsCsv(text);
           setContractsFileName(file.name);
           setContractsFileSize(sizeStr);
-        } else {
+        } else if (activeDataset === "customers") {
           setCustomersCsv(text);
           setCustomersFileName(file.name);
           setCustomersFileSize(sizeStr);
+        } else {
+          setBuildingsCsv(text);
+          setBuildingsFileName(file.name);
         }
         setPage(1);
         setImportStatus({ status: "idle", message: "" });
@@ -197,6 +204,12 @@ export default function CsvUploadPage({
   };
 
   const handleImport = () => {
+    if (activeDataset === "buildings") {
+      if (!parsedBuildingsRows.length) return setImportStatus({ status: "error", message: "فایل ساختمان معتبر یا دارای ردیف نیست." });
+      const res = appStore.importBuildingsFromCsv(parsedBuildingsRows);
+      setImportStatus({ status: "success", message: `${res.updated.toLocaleString("fa-IR")} قرارداد با مبلغ دوره و برنامه خام از مهر به‌روزرسانی شد.` });
+      return;
+    }
     if (activeDataset === "contracts") {
       if (!parsedContractsRows.length) {
         setImportStatus({
@@ -332,6 +345,9 @@ export default function CsvUploadPage({
             >
               {parsedCustomersRows.length.toLocaleString("fa-IR")}
             </span>
+          </button>
+          <button type="button" onClick={() => { setActiveDataset("buildings"); setImportStatus({ status: "idle", message: "" }); }} className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${activeDataset === "buildings" ? "bg-emerald-600 text-white" : `${t.hover} ${t.sub}`}`}>
+            <Building2 size={16}/><span>آپلود CSV ساختمان‌ها و مبلغ دوره</span><span className="rounded-full bg-white/20 px-2">{parsedBuildingsRows.length.toLocaleString("fa-IR")}</span>
           </button>
         </div>
 
@@ -704,7 +720,9 @@ export default function CsvUploadPage({
       {activeView === "preview" ? (
         <div className={`rounded-xl border ${t.border} ${t.card} overflow-hidden shadow-sm`}>
           <div className="overflow-x-auto">
-            {activeDataset === "contracts" ? (
+            {activeDataset === "buildings" ? (
+              <table className="w-full text-right text-xs"><thead className={`border-b ${t.border} bg-zinc-800/50 ${t.sub}`}><tr><th className="p-3">شماره قرارداد</th><th className="p-3">مشتری</th><th className="p-3">ساختمان</th><th className="p-3">شروع</th><th className="p-3">پایان</th><th className="p-3">هزینه هر دوره</th></tr></thead><tbody>{parsedBuildingsRows.map((row,index)=><tr key={index} className={`border-b ${t.border}`}><td className="p-3">{row.contractNo}</td><td className="p-3">{row.customerName}</td><td className="p-3">{row.buildingName}</td><td className="p-3">{row.startDate}</td><td className="p-3">{row.endDate}</td><td className="p-3">{row.serviceFee.toLocaleString("fa-IR")} ریال</td></tr>)}</tbody></table>
+            ) : activeDataset === "contracts" ? (
               /* Contracts Table Preview */
               <table className="w-full text-right text-xs">
                 <thead className={`border-b ${t.border} bg-zinc-800/50 ${t.sub} uppercase font-semibold`}>
@@ -892,12 +910,14 @@ export default function CsvUploadPage({
             <span className={`text-xs ${t.sub}`}>می‌توانید کل خطوط فایل CSV را مستقیماً اینجا Paste کنید</span>
           </div>
           <textarea
-            value={activeDataset === "contracts" ? contractsCsv : customersCsv}
+            value={activeDataset === "contracts" ? contractsCsv : activeDataset === "customers" ? customersCsv : buildingsCsv}
             onChange={(e) => {
               if (activeDataset === "contracts") {
                 setContractsCsv(e.target.value);
-              } else {
+              } else if (activeDataset === "customers") {
                 setCustomersCsv(e.target.value);
+              } else {
+                setBuildingsCsv(e.target.value);
               }
               setImportStatus({ status: "idle", message: "" });
             }}

@@ -119,7 +119,7 @@ export function ContractPaymentsView({
   const { months, payments, invoices } = details;
 
   // Financial calculations
-  const baseContractPayable = months.reduce((acc, m) => acc + m.amount, 0);
+  const baseContractPayable = months.filter((m) => m.done).reduce((acc, m) => acc + m.amount, 0);
   const extraInvoicesAmount = invoices.reduce((acc, i) => acc + i.amount, 0);
   const totalPayable = baseContractPayable + extraInvoicesAmount;
   const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);

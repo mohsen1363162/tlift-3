@@ -107,7 +107,7 @@ export default function ContractServicesListView({
   const [isMarkDoneMode, setIsMarkDoneMode] = useState(false);
 
   // Financial Stats
-  const totalMonthsAmount = months.reduce((acc, m) => acc + m.amount, 0);
+  const totalMonthsAmount = months.filter((m) => m.done).reduce((acc, m) => acc + m.amount, 0);
   const totalPaid = details.payments.reduce((acc, p) => acc + p.amount, 0);
   const debt = Math.max(0, totalMonthsAmount - totalPaid);
 

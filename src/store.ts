@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { pushKey, registerApplier, syncNow, recordOfflineService, getSyncState } from "./cloudSync";
 import { Contract, Customer, Staff, initialContracts, initialCustomers, initialStaff } from "./data";
+import type { BuildingCsvRow } from "./utils/buildingsCsv";
 import {
   RAW_CSV_DATA,
   RAW_CUSTOMERS_CSV_DATA,
@@ -966,6 +967,29 @@ export const appStore = {
     delete contractDetailsMap[id];
     saveStorage("tlift_contract_details", contractDetailsMap);
     notifyListeners();
+  },
+
+  importBuildingsFromCsv: (rows: BuildingCsvRow[]) => {
+    const monthNames = ["مهر", "آبان", "آذر", "دی", "بهمن", "اسفند", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور"];
+    let updated = 0;
+    rows.forEach((row) => {
+      const index = contracts.findIndex((contract) =>
+        (row.contractNo && contract.no === row.contractNo) ||
+        contract.building.replace(/^\*\s*/, "").trim() === row.buildingName.replace(/^\*\s*/, "").trim()
+      );
+      if (index < 0) return;
+      const contract = contracts[index];
+      contracts[index] = { ...contract, customer: row.customerName || contract.customer, building: row.buildingName || contract.building, buildingName: row.buildingName || contract.buildingName, start: row.startDate || contract.start, end: row.endDate || contract.end, monthlyServiceFee: row.serviceFee };
+      contractDetailsMap[contract.id] = {
+        months: monthNames.map((m, i) => ({ id: i + 1, m, y: i < 6 ? 1405 : 1406, done: false, amount: row.serviceFee, paid: false, faultsCount: 0, faultsList: [], partsAmount: 0, partsList: [], wage: 0, trip: 0, discount: 0 })),
+        payments: [], invoices: [], breakdowns: [],
+      };
+      updated++;
+    });
+    saveStorage("tlift_contracts", contracts);
+    saveStorage("tlift_contract_details", contractDetailsMap);
+    notifyListeners();
+    return { totalRows: rows.length, updated };
   },
 
   importContractsFromCsv: (csvText: string, mode: "merge" | "replace" = "replace") => {

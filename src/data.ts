@@ -265,6 +265,7 @@ export type Contract = {
   isCanceled?: boolean;
   cancelDate?: string;
   customer?: string;
+  monthlyServiceFee?: number;
 };
 
 export const initialContracts: Contract[] = [];
