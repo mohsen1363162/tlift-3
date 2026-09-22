@@ -57,6 +57,7 @@ const ZonesPage = lazy(() => import("./components/ZonesPage"));
 const ChecklistSettingsPage = lazy(() => import("./components/ChecklistSettingsPage"));
 const CpanelSettingsPage = lazy(() => import("./components/CpanelSettingsPage"));
 const TechnicianMobileApp = lazy(() => import("./components/mobile/TechnicianMobileApp"));
+const TechnicianDashboard = lazy(() => import("./components/TechnicianDashboard"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
 
 function PageLoader({ label = "در حال بارگذاری…" }: { label?: string }) {
@@ -93,6 +94,7 @@ type Tab = {
     | "zones"
     | "checklist"
     | "cpanel"
+    | "technicianDashboard"
     | "serviceReport";
   contract?: Contract;
   monthService?: MonthService;
@@ -200,7 +202,9 @@ export default function App() {
   };
 
   const openMenuItem = (label: string) => {
-    if (label === "لیست مشتریان") addTab("مشتریان", "customers");
+    if (["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری", "قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"].includes(label))
+      addTab("داشبورد سرویس‌کاران", "technicianDashboard");
+    else if (label === "لیست مشتریان") addTab("مشتریان", "customers");
     else if (label === "چاپ گزارش مشتریان بدهکار") addTab("چاپ گزارش مشتریان بدهکار", "debtorReport");
     else if (label === "چاپ گزارش مشتریان") addTab("چاپ گزارش مشتریان", "customerReport");
     else if (label === "قرارداد ها" || label === "قراردادها") addTab("قرارداد ها", "contracts");
@@ -668,6 +672,8 @@ export default function App() {
               <StaffPage t={t} />
             ) : current?.kind === "parts" ? (
               <PartsPage t={t} />
+            ) : current?.kind === "technicianDashboard" ? (
+              <TechnicianDashboard t={t} />
             ) : current?.kind === "zones" ? (
               <ZonesPage t={t} onShowToast={showToast} />
             ) : current?.kind === "csvUpload" ? (

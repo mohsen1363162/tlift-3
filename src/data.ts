@@ -26,7 +26,7 @@ export type NavItem = {
 
 export const navItems: NavItem[] = [
   { id: "marketing", label: "دسترسی سریع", icon: Sparkles },
-  { id: "sales", label: "فروش", icon: TrendingUp },
+  { id: "sales", label: "سرویس‌کار", icon: TrendingUp },
   { id: "install", label: "نصب و راه اندازی", icon: Boxes },
   { id: "service", label: "سرویس و نگهداری", icon: CalendarCheck },
   { id: "servicenegar", label: "سرویس نگار", icon: PenSquare, badge: true },
@@ -44,12 +44,12 @@ export type MenuGroup = { title: string; items: string[] };
 
 export const salesMenu: MenuGroup[] = [
   {
-    title: "مشتریان و سرنخ‌ها",
-    items: ["سرنخ‌های فروش", "پیش‌فاکتورها", "فاکتورهای فروش", "پیگیری‌های تلفنی"],
+    title: "مدیریت سرویس‌کار",
+    items: ["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری"],
   },
   {
-    title: "گزارشات فروش",
-    items: ["گزارش فروش ماهانه", "تحلیل مشتریان بالقوه"],
+    title: "قطعات و تجهیزات",
+    items: ["قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"],
   },
 ];
 

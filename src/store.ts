@@ -241,6 +241,15 @@ const INITIAL_MARKETING_ITEMS: MarketingItem[] = [
   { id: "file:لیست مشتریان", name: "لیست مشتریان", section: "پرونده", groupTitle: "مشتریان" },
 ];
 
+export type TechnicianPartDelivery = {
+  id: string;
+  technicianName: string;
+  partName: string;
+  quantity: number;
+  deliveredAt: string;
+  note?: string;
+};
+
 export type ActiveServiceAssignment = {
   contractId: number;
   monthId: number;
@@ -671,6 +680,7 @@ let staff: Staff[] = loadStorage<Staff[]>("tlift_staff", initialStaff);
 let marketingItems: MarketingItem[] = loadStorage<MarketingItem[]>("tlift_marketing_items", INITIAL_MARKETING_ITEMS);
 let scheduledServices: ScheduledService[] = loadStorage<ScheduledService[]>("tlift_scheduled_services", INITIAL_SCHEDULED_SERVICES);
 let activeServiceAssignments: ActiveServiceAssignment[] = loadStorage<ActiveServiceAssignment[]>("tlift_active_service_assignments_v1", []);
+let technicianPartDeliveries: TechnicianPartDelivery[] = loadStorage<TechnicianPartDelivery[]>("tlift_technician_part_deliveries_v1", []);
 let zones: ZoneItem[] = loadStorage<ZoneItem[]>("tlift_zones_v2", INITIAL_ZONES);
 let checklistItems: ChecklistItem[] = loadStorage<ChecklistItem[]>("tlift_checklist_v1", INITIAL_CHECKLIST);
 let checklistCategories: string[] = loadStorage<string[]>("tlift_checklist_categories_v1", INITIAL_CHECKLIST_CATEGORIES);
@@ -807,6 +817,9 @@ registerApplier((key, data) => {
       break;
     case "tlift_active_service_assignments_v1":
       activeServiceAssignments = data as ActiveServiceAssignment[];
+      break;
+    case "tlift_technician_part_deliveries_v1":
+      technicianPartDeliveries = data as TechnicianPartDelivery[];
       break;
     case "tlift_zones_v2":
       zones = data as ZoneItem[];
@@ -1474,6 +1487,21 @@ export const appStore = {
     saveStorage("tlift_marketing_items", marketingItems);
     notifyListeners();
   },
+  // TECHNICIAN PART DELIVERIES
+  getTechnicianPartDeliveries: () => technicianPartDeliveries,
+  addTechnicianPartDelivery: (delivery: Omit<TechnicianPartDelivery, "id">) => {
+    const item = { ...delivery, id: `delivery-${Date.now()}` };
+    technicianPartDeliveries = [item, ...technicianPartDeliveries];
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
+    notifyListeners();
+    return item;
+  },
+  removeTechnicianPartDelivery: (id: string) => {
+    technicianPartDeliveries = technicianPartDeliveries.filter((item) => item.id !== id);
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
+    notifyListeners();
+  },
+
   // ACTIVE SERVICE LOCKS
   getActiveServiceAssignments: () => activeServiceAssignments,
   startActiveService: (assignment: ActiveServiceAssignment) => {
@@ -1705,6 +1733,16 @@ export function useContracts() {
       return () => listeners.delete(callback);
     },
     () => contracts
+  );
+}
+
+export function useTechnicianPartDeliveries() {
+  return useSyncExternalStore(
+    (callback) => {
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    },
+    () => technicianPartDeliveries
   );
 }
 
