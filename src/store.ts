@@ -971,23 +971,26 @@ export const appStore = {
 
   importBuildingsFromCsv: (rows: BuildingCsvRow[]) => {
     const monthNames = ["مهر", "آبان", "آذر", "دی", "بهمن", "اسفند", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور"];
-    let updated = 0;
-    rows.forEach((row) => {
-      const index = contracts.findIndex((contract) =>
-        (row.contractNo && contract.no === row.contractNo) ||
-        contract.building.replace(/^\*\s*/, "").trim() === row.buildingName.replace(/^\*\s*/, "").trim()
-      );
-      if (index < 0) return;
-      const contract = contracts[index];
-      contracts[index] = { ...contract, customer: row.customerName || contract.customer, building: row.buildingName || contract.building, buildingName: row.buildingName || contract.buildingName, start: row.startDate || contract.start, end: row.endDate || contract.end, monthlyServiceFee: row.serviceFee };
-      contractDetailsMap[contract.id] = {
-        months: monthNames.map((m, i) => ({ id: i + 1, m, y: i < 6 ? 1405 : 1406, done: false, amount: row.serviceFee, paid: false, faultsCount: 0, faultsList: [], partsAmount: 0, partsList: [], wage: 0, trip: 0, discount: 0 })),
-        payments: [], invoices: [], breakdowns: [],
-      };
-      updated++;
+    const makeRawDetails = (amount: number): ContractDetails => ({
+      months: monthNames.map((m, i) => ({ id: i + 1, m, y: i < 6 ? 1405 : 1406, done: false, amount, paid: false, faultsCount: 0, faultsList: [], partsAmount: 0, partsList: [], wage: 0, trip: 0, discount: 0 })),
+      payments: [], invoices: [], breakdowns: [],
     });
+    let updated = 0;
+    const fees = new Map(rows.map((row) => [row.contractNo.replace(/^0+/, ""), row]));
+
+    // با هر بار ورود این فایل، تمام سابقه مالی و سرویس همه قراردادها خام می‌شود.
+    contracts = contracts.map((contract) => {
+      const row = fees.get(contract.no.replace(/^0+/, ""));
+      const amount = row?.serviceFee || 0;
+      contractDetailsMap[contract.id] = makeRawDetails(amount);
+      if (!row) return { ...contract, monthlyServiceFee: 0 };
+      updated++;
+      return { ...contract, customer: row.customerName || contract.customer, building: row.buildingName || contract.building, buildingName: row.buildingName || contract.buildingName, start: row.startDate || contract.start, end: row.endDate || contract.end, monthlyServiceFee: amount };
+    });
+    activeServiceAssignments = [];
     saveStorage("tlift_contracts", contracts);
     saveStorage("tlift_contract_details", contractDetailsMap);
+    saveStorage("tlift_active_service_assignments_v1", activeServiceAssignments);
     notifyListeners();
     return { totalRows: rows.length, updated };
   },
@@ -1046,94 +1049,18 @@ export const appStore = {
 
   // CONTRACT DETAILS (Months, Services, Payments, Invoices)
   getContractDetails: (contractId: number): ContractDetails => {
-    const contract = contracts.find((c) => c.id === contractId);
-    const isContract5475 = contract?.no === "5475";
-
     if (!contractDetailsMap[contractId]) {
-      if (isContract5475) {
-        // Exact data matching user's screenshot sshot-2.png and sshot-4.png
-        const defaultChecks: Record<number, ServiceChecklistStatus> = {};
-        for (let c = 1; c <= 38; c++) defaultChecks[c] = "ok";
-
-        const monthlyAmt = 5500000;
-        const initialMonths = generateInitialMonths(1405, monthlyAmt).map((m, idx) => ({
-          ...m,
-          amount: monthlyAmt,
-          paid: true,
-          done: idx < 4,
-          paidDate: "1405/06/13",
-          paidMethod: "نقد",
-          paidRef: "CSH-5475-01",
-          serviceNo: idx === 0 ? "774917" : `7749${18 + idx}`,
-          plannedDate: idx === 0 ? "1405/03/26" : `1405/0${4 + idx}/26`,
-          date: idx === 0 ? "1405/03/28" : idx < 4 ? `1405/0${4 + idx}/28` : undefined,
-          report: idx === 0 ? "سرویس آسانسور خرداد 1405انجام شد" : `سرویس آسانسور ${m.m} ${m.y} انجام شد`,
-          techs: [
-            "محسن امامی برسری",
-            "مرتضی قاسمعلی",
-            "محمد حسن رحیمی زاده",
-            "بهمن کشاورز",
-            "میثم سهرابی",
-            "مجتبی فرهمند",
-          ],
-          doneBy: "محسن امامی برسری",
-          buildingName: "حسینی فر چهاراه پادگان",
-          deviceNo: "1",
-          reminder: "-",
-          customerFollowup: "-",
-          wage: 0,
-          trip: 0,
-          partsAmount: 0,
-          discount: 0,
-          tax: 0,
-          checklistResults: defaultChecks,
-        }));
-        contractDetailsMap[contractId] = {
-          months: initialMonths,
-          payments: [
-            {
-              id: 1,
-              title: "پرداخت نقدی قرارداد",
-              date: "13 شهریور 1405",
-              regDate: "13 شهریور 1405",
-              amount: 66000000,
-              method: "نقد",
-              paymentType: "نقد",
-              forReason: "قرارداد سرویس و نگهداری بشماره : 5475",
-              customerName: "* حسینی فر",
-              buildingName: "حسینی فر چهاراه پادگان",
-              buildingAddress: "قزوین چهار راه پادگان نبش کوچه متانت ساختمان آریامهر",
-              ref: "CSH-5475-01",
-            },
-          ],
-          invoices: [],
-        };
-      } else {
-        contractDetailsMap[contractId] = {
-          months: generateInitialMonths(1405, 8500000),
-          payments: [],
-          invoices: [],
-        };
-      }
-      saveStorage("tlift_contract_details", contractDetailsMap);
-    } else if (isContract5475 && contractDetailsMap[contractId].payments.length === 0) {
-      // Ensure contract 5475 has the payment from sshot-2.png
-      contractDetailsMap[contractId].payments = [
-        {
-          id: 1,
-          title: "پرداخت نقدی قرارداد",
-          date: "13 شهریور 1405",
-          regDate: "13 شهریور 1405",
-          amount: 66000000,
-          method: "نقد",
-          paymentType: "نقد",
-          forReason: "قرارداد سرویس و نگهداری بشماره : 5475",
-          customerName: "* حسینی فر",
-          buildingName: "حسینی فر چهاراه پادگان",
-          buildingAddress: "قزوین چهار راه پادگان نبش کوچه متانت ساختمان آریامهر",
-          ref: "CSH-5475-01",
-        },
-      ];
+      const contract = contracts.find((c) => c.id === contractId);
+      contractDetailsMap[contractId] = {
+        months: generateInitialMonths(1405, contract?.monthlyServiceFee || 0).map((month) => ({
+          ...month,
+          done: false,
+          paid: false,
+        })),
+        payments: [],
+        invoices: [],
+        breakdowns: [],
+      };
       saveStorage("tlift_contract_details", contractDetailsMap);
     }
     return contractDetailsMap[contractId];
