@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { pushKey, registerApplier, syncNow, recordOfflineService, getSyncState } from "./cloudSync";
 import { Contract, Customer, Staff, initialContracts, initialCustomers, initialStaff } from "./data";
 import type { BuildingCsvRow } from "./utils/buildingsCsv";
+import { getContractServiceDay } from "./utils/serviceScheduleDays";
 import {
   RAW_CSV_DATA,
   RAW_CUSTOMERS_CSV_DATA,
@@ -971,8 +972,13 @@ export const appStore = {
 
   importBuildingsFromCsv: (rows: BuildingCsvRow[]) => {
     const monthNames = ["مهر", "آبان", "آذر", "دی", "بهمن", "اسفند", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور"];
-    const makeRawDetails = (amount: number): ContractDetails => ({
-      months: monthNames.map((m, i) => ({ id: i + 1, m, y: i < 6 ? 1405 : 1406, done: false, amount, paid: false, faultsCount: 0, faultsList: [], partsAmount: 0, partsList: [], wage: 0, trip: 0, discount: 0 })),
+    const makeRawDetails = (amount: number, contractNo: string): ContractDetails => ({
+      months: monthNames.map((m, i) => {
+        const monthNumber = ((i + 6) % 12) + 1;
+        const year = i < 6 ? 1405 : 1406;
+        const day = getContractServiceDay(contractNo);
+        return { id: i + 1, m, y: year, plannedDate: `${year}/${String(monthNumber).padStart(2, "0")}/${String(day).padStart(2, "0")}`, done: false, amount, paid: false, faultsCount: 0, faultsList: [], partsAmount: 0, partsList: [], wage: 0, trip: 0, discount: 0 };
+      }),
       payments: [], invoices: [], breakdowns: [],
     });
     let updated = 0;
@@ -982,7 +988,7 @@ export const appStore = {
     contracts = contracts.map((contract) => {
       const row = fees.get(contract.no.replace(/^0+/, ""));
       const amount = row?.serviceFee || 0;
-      contractDetailsMap[contract.id] = makeRawDetails(amount);
+      contractDetailsMap[contract.id] = makeRawDetails(amount, contract.no);
       if (!row) return { ...contract, monthlyServiceFee: 0 };
       updated++;
       return { ...contract, customer: row.customerName || contract.customer, building: row.buildingName || contract.building, buildingName: row.buildingName || contract.buildingName, start: row.startDate || contract.start, end: row.endDate || contract.end, monthlyServiceFee: amount };
@@ -1062,6 +1068,21 @@ export const appStore = {
         breakdowns: [],
       };
       saveStorage("tlift_contract_details", contractDetailsMap);
+    }
+    const contract = contracts.find((item) => item.id === contractId);
+    if (contract) {
+      const serviceDay = getContractServiceDay(contract.no);
+      const monthNumbers: Record<string, number> = { فروردین: 1, اردیبهشت: 2, خرداد: 3, تیر: 4, مرداد: 5, شهریور: 6, مهر: 7, آبان: 8, آذر: 9, دی: 10, بهمن: 11, اسفند: 12 };
+      let changed = false;
+      contractDetailsMap[contractId].months = contractDetailsMap[contractId].months.map((month) => {
+        const monthNumber = monthNumbers[month.m];
+        if (!monthNumber) return month;
+        const plannedDate = `${month.y}/${String(monthNumber).padStart(2, "0")}/${String(serviceDay).padStart(2, "0")}`;
+        if (month.plannedDate === plannedDate) return month;
+        changed = true;
+        return { ...month, plannedDate };
+      });
+      if (changed) saveStorage("tlift_contract_details", contractDetailsMap);
     }
     return contractDetailsMap[contractId];
   },
