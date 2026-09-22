@@ -54,6 +54,7 @@ export type MonthService = {
   checklistResults?: Record<number, ServiceChecklistStatus>;
   attachments?: string[];
   delayOrAdvance?: string;
+  serviceDurationReason?: string;
 };
 
 export type PaymentRecord = {

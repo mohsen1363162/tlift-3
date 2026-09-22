@@ -125,6 +125,7 @@ type OfflineServiceDraft = {
   wage: number;
   trip: number;
   attachments: string[];
+  serviceDurationReason?: string;
 };
 
 const OFFLINE_DRAFTS_KEY = "tlift_unassigned_offline_services_v1";
@@ -313,6 +314,9 @@ export default function TechnicianMobileApp({
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState("کارت‌خوان سیار");
   const [payRef, setPayRef] = useState("");
+  const [durationReviewOpen, setDurationReviewOpen] = useState(false);
+  const [durationReason, setDurationReason] = useState("");
+  const [correctedOutTime, setCorrectedOutTime] = useState("");
 
   const partsTotal = usedParts.reduce((s, p) => s + p.qty * p.price, 0);
   const total = (selected?.month.amount || 0) + partsTotal + wage + trip;
@@ -408,8 +412,15 @@ export default function TechnicianMobileApp({
     if (!dayStart) toggleDay();
   };
 
-  const finishService = () => {
+  const finishService = (reviewConfirmed = false) => {
     if (!selected) return;
+    if (jobSec >= 2 * 60 * 60 && !reviewConfirmed) {
+      setCorrectedOutTime(nowTime().slice(0, 5));
+      setDurationReason("");
+      setDurationReviewOpen(true);
+      return;
+    }
+    const finalOutTime = correctedOutTime || nowTime();
     const faultsList = faults.map((f) => `${f.text}${f.fixed ? " (رفع شد)" : ""}`);
 
     if (isAdhocOfflineService) {
@@ -419,7 +430,7 @@ export default function TechnicianMobileApp({
         createdAt: Date.now(),
         doneDate: todayJalali(),
         inTime: jobStartClock,
-        outTime: nowTime(),
+        outTime: finalOutTime,
         report,
         reminder,
         followup,
@@ -429,6 +440,7 @@ export default function TechnicianMobileApp({
         wage,
         trip,
         attachments: photos,
+        serviceDurationReason: durationReason.trim() || undefined,
       };
       saveOfflineDrafts([draft, ...offlineDrafts]);
       notify("سرویس آفلاین ذخیره شد؛ پس از اتصال، آن را به قرارداد مربوط متصل کنید.");
@@ -445,7 +457,7 @@ export default function TechnicianMobileApp({
       doneBy: technician.name,
       doneDate: todayJalali(),
       inTime: jobStartClock,
-      outTime: nowTime(),
+      outTime: finalOutTime,
       report,
       reminder,
       total,
@@ -461,7 +473,9 @@ export default function TechnicianMobileApp({
       checklistResults: results,
       customerFollowup: followup,
       attachments: photos,
+      serviceDurationReason: durationReason.trim() || undefined,
     });
+    setDurationReviewOpen(false);
     setPayAmount(total);
     setPayModal(true);
   };
@@ -1209,7 +1223,7 @@ export default function TechnicianMobileApp({
         )}
         <button
           type="button"
-          onClick={finishService}
+          onClick={() => finishService()}
           disabled={managerPresent && !signed}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-[14px] font-bold text-white shadow-lg disabled:opacity-40"
         >
@@ -1260,6 +1274,7 @@ export default function TechnicianMobileApp({
       checklistResults: draft.checklistResults,
       customerFollowup: draft.followup,
       attachments: draft.attachments,
+      serviceDurationReason: draft.serviceDurationReason,
     });
     saveOfflineDrafts(offlineDrafts.filter((item) => item.id !== draft.id));
     setDraftMappings((current) => {
@@ -1545,6 +1560,41 @@ export default function TechnicianMobileApp({
     ) : null;
 
   /* ------------------------------ pay modal ------------------------------- */
+  const renderDurationReviewModal = () =>
+    durationReviewOpen ? (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" dir="rtl">
+        <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl">
+          <div className="flex items-center gap-2 text-[14px] font-bold text-amber-700">
+            <Clock size={20} /> بررسی زمان طولانی سرویس
+          </div>
+          <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11.5px] leading-5 text-amber-900">
+            مدت این سرویس از دو ساعت بیشتر شده است. اگر ساعت خروج اشتباه است آن را اصلاح کنید؛ در غیر این صورت دلیل طولانی‌شدن را بنویسید.
+          </p>
+          <label className="mt-3 block text-[11px] text-gray-600">ساعت خروج واقعی</label>
+          <input type="time" value={correctedOutTime} onChange={(e) => setCorrectedOutTime(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm" />
+          <label className="mt-3 block text-[11px] text-gray-600">دلیل حضور بیش از دو ساعت</label>
+          <textarea rows={3} value={durationReason} onChange={(e) => setDurationReason(e.target.value)} placeholder="مثلاً رفع خرابی پیچیده، انتظار برای قطعه یا هماهنگی با مدیر ساختمان..." className="mt-1 w-full rounded-xl border p-3 text-[12px]" />
+          <div className="mt-4 flex gap-2">
+            <button type="button" onClick={() => setDurationReviewOpen(false)} className="flex-1 rounded-xl border py-2.5 text-[12px]">بازگشت</button>
+            <button type="button" onClick={() => {
+              const [inH, inM] = jobStartClock.split(":").map(Number);
+              const [outH, outM] = correctedOutTime.split(":").map(Number);
+              const correctedMinutes = outH * 60 + outM - (inH * 60 + inM);
+              if (correctedMinutes >= 120 && !durationReason.trim()) {
+                notify("برای سرویس بالای دو ساعت، نوشتن دلیل الزامی است");
+                return;
+              }
+              if (correctedMinutes < 0) {
+                notify("ساعت خروج نمی‌تواند قبل از ساعت ورود باشد");
+                return;
+              }
+              finishService(true);
+            }} className="flex-1 rounded-xl bg-amber-600 py-2.5 text-[12px] font-bold text-white">تأیید و پایان سرویس</button>
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   const renderPayModal = () =>
     payModal ? (
       <div className="fixed inset-0 z-50 flex items-end bg-black/50">
@@ -1624,6 +1674,7 @@ export default function TechnicianMobileApp({
 
         {["home", "map", "calendar", "services", "offlineService"].includes(screen) && renderBottomNav()}
         {renderDrawer()}
+        {renderDurationReviewModal()}
         {renderPayModal()}
         <AndroidAppModal open={androidModal} onClose={() => setAndroidModal(false)} />
 

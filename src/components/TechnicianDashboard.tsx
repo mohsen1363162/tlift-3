@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Activity, Clock3, PackageCheck, Wrench, Plus, Trash2, UserRound, TrendingUp } from "lucide-react";
+import { Activity, Clock3, PackageCheck, Wrench, Plus, Trash2, UserRound, TrendingUp, StopCircle, AlertTriangle } from "lucide-react";
 import type { Theme } from "../theme";
 import {
   appStore,
@@ -104,6 +104,33 @@ export default function TechnicianDashboard({ t }: { t: Theme }) {
           </div>
           <input value={note} onChange={(e) => setNote(e.target.value)} className={`mt-2 w-full rounded-lg border p-2 text-xs ${t.input}`} placeholder="توضیحات تحویل (اختیاری)" />
           <div className="mt-3 max-h-36 overflow-auto text-xs">{technicianDeliveries.map((item) => <div key={item.id} className={`flex items-center justify-between border-b py-2 ${t.border}`}><span>{item.partName} — {fa(item.quantity)} عدد</span><span className="flex items-center gap-2"><small className={t.sub}>{item.deliveredAt}</small><button onClick={() => appStore.removeTechnicianPartDelivery(item.id)} className="text-rose-500"><Trash2 size={13} /></button></span></div>)}</div>
+        </section>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <section className={`rounded-2xl border p-4 ${t.panel} ${t.border}`}>
+          <h2 className="mb-3 flex items-center gap-2 font-bold"><AlertTriangle size={18} className="text-amber-500" /> سرویس‌های طولانی و دلیل آن</h2>
+          <div className="max-h-52 overflow-auto text-xs">
+            {records.filter(({ month }) => month.serviceDurationReason).map(({ contract, month }) => (
+              <div key={`${contract.id}-${month.id}`} className={`border-b py-3 ${t.border}`}>
+                <div className="flex justify-between gap-2"><b>{contract.building.replace(/^\*\s*/, "")}</b><span className={t.sub}>{month.inTime || "—"} تا {month.outTime || "—"}</span></div>
+                <p className="mt-1 text-amber-600">{month.serviceDurationReason}</p>
+              </div>
+            ))}
+            {!records.some(({ month }) => month.serviceDurationReason) && <div className={`py-8 text-center ${t.sub}`}>موردی ثبت نشده است</div>}
+          </div>
+        </section>
+        <section className={`rounded-2xl border p-4 ${t.panel} ${t.border}`}>
+          <h2 className="mb-3 flex items-center gap-2 font-bold"><StopCircle size={18} className="text-rose-500" /> کنترل کارهای باز و فراموش‌شده</h2>
+          <div className="space-y-2 text-xs">
+            {active.map((item) => (
+              <div key={`${item.contractId}-${item.monthId}`} className={`flex items-center justify-between rounded-lg border p-3 ${t.border}`}>
+                <div><b>{item.buildingName}</b><div className={`mt-1 ${t.sub}`}>{item.technicianName} · شروع {new Date(item.startedAt).toLocaleString("fa-IR")}</div></div>
+                <button type="button" title="پایان دستی کار فراموش‌شده" onClick={() => appStore.finishActiveService(item.contractId, item.monthId, item.technicianName)} className="flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-2 font-bold text-white"><StopCircle size={14} /> پایان دستی</button>
+              </div>
+            ))}
+            {active.length === 0 && <div className={`py-8 text-center ${t.sub}`}>هیچ سرویس بازی وجود ندارد</div>}
+          </div>
         </section>
       </div>
 
