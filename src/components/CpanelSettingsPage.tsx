@@ -12,8 +12,11 @@ import {
   ShieldCheck,
   Copy,
   Check,
+  UploadCloud,
+  DatabaseBackup,
 } from "lucide-react";
 import { Theme } from "../theme";
+import { downloadFullBackup, restoreFullBackup } from "../utils/fullBackup";
 
 interface CpanelSettingsPageProps {
   t: Theme;
@@ -27,6 +30,24 @@ export default function CpanelSettingsPage({
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [backupStatus, setBackupStatus] = useState("");
+
+  const handleDataBackup = () => {
+    const count = downloadFullBackup();
+    setBackupStatus(`پشتیبان کامل ${count.toLocaleString("fa-IR")} بخش اطلاعاتی دانلود شد.`);
+    onShowToast("پشتیبان کامل اطلاعات دانلود شد");
+  };
+
+  const handleDataRestore = async (file?: File) => {
+    if (!file) return;
+    try {
+      const result = await restoreFullBackup(file);
+      setBackupStatus(`${result.restored.toLocaleString("fa-IR")} بخش بازیابی شد؛ در حال همگام‌سازی و بازنشانی برنامه...`);
+      setTimeout(() => window.location.reload(), 1800);
+    } catch (error) {
+      setBackupStatus(error instanceof Error ? error.message : "فایل پشتیبان معتبر نیست.");
+    }
+  };
 
   // تابع دانلود تضمینی نسخه کامل
   const handleFullDownload = async (filename: "public_html.zip" | "cpanel_public_html.zip" = "public_html.zip") => {
@@ -127,6 +148,20 @@ export default function CpanelSettingsPage({
             <ExternalLink size={12} />
           </a>
         </div>
+      </div>
+
+      <div className={`mb-6 rounded-2xl border p-5 shadow-sm ${t.card} ${t.border}`}>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className={`flex items-center gap-2 text-base font-bold ${t.text}`}><DatabaseBackup size={21} className="text-emerald-500"/> پشتیبان کامل اطلاعات نرم‌افزار</h2>
+            <p className={`mt-1 text-xs ${t.sub}`}>قراردادها، مشتریان، قیمت‌ها، سرویس‌ها، پرداخت‌ها و تنظیمات را در یک فایل ذخیره یا بازیابی کنید.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={handleDataBackup} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-500"><Download size={16}/> دانلود پشتیبان کامل</button>
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-sky-500/50 px-4 py-2.5 text-xs font-bold text-sky-500 hover:bg-sky-500/10"><UploadCloud size={16}/> بازیابی پشتیبان<input type="file" accept="application/json,.json" className="hidden" onChange={(event) => { handleDataRestore(event.target.files?.[0]); event.currentTarget.value = ""; }}/></label>
+          </div>
+        </div>
+        {backupStatus && <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">{backupStatus}</div>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
