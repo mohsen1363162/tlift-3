@@ -9,6 +9,7 @@ import {
   useTechnicianPartDeliveries,
 } from "../store";
 import { useParts } from "../partsStore";
+import NumberStepper from "./NumberStepper";
 
 const fa = (value: number | string) => String(value).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
 const timeToMinutes = (value?: string) => {
@@ -99,7 +100,7 @@ export default function TechnicianDashboard({ t }: { t: Theme }) {
           <h2 className="mb-3 font-bold">تحویل قطعه به سرویس‌کار</h2>
           <div className="grid gap-2 sm:grid-cols-3">
             <select value={partName} onChange={(e) => setPartName(e.target.value)} className={`rounded-lg border p-2 text-xs ${t.input}`}>{parts.map((part) => <option key={part.id} value={part.name}>{part.name}</option>)}</select>
-            <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))} className={`rounded-lg border p-2 text-xs ${t.input}`} placeholder="تعداد" />
+            <NumberStepper value={quantity} min={1} onChange={setQuantity} ariaLabel="تعداد قطعه تحویلی" className="w-full" />
             <button type="button" onClick={() => { if (!partName) return; appStore.addTechnicianPartDelivery({ technicianName: selected, partName, quantity, deliveredAt: new Date().toLocaleDateString("fa-IR"), note }); setNote(""); }} className="flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white"><Plus size={14} /> ثبت تحویل</button>
           </div>
           <input value={note} onChange={(e) => setNote(e.target.value)} className={`mt-2 w-full rounded-lg border p-2 text-xs ${t.input}`} placeholder="توضیحات تحویل (اختیاری)" />

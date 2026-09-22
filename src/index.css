@@ -129,6 +129,25 @@
     box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.12);
   }
 
+  /* کنترل عددی واضح‌تر در تمام نرم‌افزار */
+  input[type="number"] {
+    min-height: 2.5rem;
+    font-weight: 600;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    min-width: 1.75rem;
+    min-height: 2.5rem;
+    opacity: 1;
+    cursor: pointer;
+  }
+  .number-stepper-input::-webkit-inner-spin-button,
+  .number-stepper-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .number-stepper-input { appearance: textfield; -moz-appearance: textfield; }
+
   table tbody tr:nth-child(even) {
     background-color: rgba(224, 242, 254, 0.025);
   }

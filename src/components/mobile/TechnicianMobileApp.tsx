@@ -57,6 +57,7 @@ import { useParts } from "../../partsStore";
 import { syncNow, toggleManualOffline } from "../../cloudSync";
 import SyncIndicator, { useSyncState } from "../SyncIndicator";
 import AndroidAppModal from "../AndroidAppModal";
+import NumberStepper from "../NumberStepper";
 import {
   getCurrentJalaliMonthInfo,
   getStoredMonthlySeconds,
@@ -996,14 +997,12 @@ export default function TechnicianMobileApp({
                       <div className="font-medium text-gray-800">{p.name}</div>
                       <div className="text-[11px] text-gray-500">{fa(p.price)} ریال / {p.unit}</div>
                     </div>
-                    <input
-                      type="number"
-                      min={1}
+                    <NumberStepper
                       value={p.qty}
-                      onChange={(e) =>
-                        setUsedParts((l) => l.map((x, k) => (k === i ? { ...x, qty: Number(e.target.value) || 1 } : x)))
-                      }
-                      className="w-14 rounded border px-1 py-1 text-center"
+                      min={1}
+                      ariaLabel={`تعداد ${p.name}`}
+                      onChange={(qty) => setUsedParts((list) => list.map((item, index) => index === i ? { ...item, qty } : item))}
+                      className="w-36"
                     />
                     <button type="button" onClick={() => setUsedParts((l) => l.filter((_, k) => k !== i))}>
                       <X size={16} className="text-red-500" />
