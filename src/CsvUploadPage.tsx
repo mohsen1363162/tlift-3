@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import type { Theme } from "./theme";
 import { parseBuildingsCsv } from "./utils/buildingsCsv";
+import { downloadFullBackup, restoreFullBackup } from "./utils/fullBackup";
 import { appStore, useContracts, useCustomers } from "./store";
 import {
   parseContractsCsv,
@@ -56,6 +57,24 @@ export default function CsvUploadPage({
   }, [initialType]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
+  const [backupMessage, setBackupMessage] = useState("");
+
+  const handleBackupDownload = () => {
+    const count = downloadFullBackup();
+    setBackupMessage(`پشتیبان کامل با ${count.toLocaleString("fa-IR")} بخش اطلاعاتی دانلود شد.`);
+  };
+
+  const handleBackupRestore = async (file?: File) => {
+    if (!file) return;
+    try {
+      const result = await restoreFullBackup(file);
+      setBackupMessage(`${result.restored.toLocaleString("fa-IR")} بخش بازیابی و برای همگام‌سازی سرور صف‌بندی شد؛ برنامه در حال بازنشانی است...`);
+      window.setTimeout(() => window.location.reload(), 1800);
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : "بازیابی پشتیبان ناموفق بود.");
+    }
+  };
 
   // Contracts CSV state
   const [contractsCsv, setContractsCsv] = useState<string>("");
@@ -294,6 +313,21 @@ export default function CsvUploadPage({
 
   return (
     <div className={`min-h-full p-4 md:p-6 pb-28 space-y-6 ${t.bg} ${t.text}`} dir="rtl">
+      <div className={`rounded-2xl border ${t.border} ${t.card} p-4 shadow-sm`}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-bold"><ShieldCheck size={18} className="text-emerald-500"/> پشتیبان کامل اطلاعات</h2>
+            <p className={`mt-1 text-xs ${t.sub}`}>قراردادها، مشتریان، قیمت‌ها، سرویس‌ها، پرداخت‌ها و تنظیمات را یکجا دانلود یا بازیابی کنید. بازیابی هم‌زمان برای سرور نیز صف‌بندی می‌شود.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={handleBackupDownload} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-500"><Download size={16}/> دانلود پشتیبان کامل</button>
+            <button type="button" onClick={() => backupInputRef.current?.click()} className="flex items-center gap-2 rounded-xl border border-sky-500/50 px-4 py-2.5 text-xs font-bold text-sky-500 hover:bg-sky-500/10"><UploadCloud size={16}/> بازیابی پشتیبان</button>
+            <input ref={backupInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { handleBackupRestore(event.target.files?.[0]); event.currentTarget.value = ""; }}/>
+          </div>
+        </div>
+        {backupMessage && <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">{backupMessage}</div>}
+      </div>
+
       {/* Dataset Selection Tabs */}
       <div className={`p-2 rounded-2xl border ${t.border} ${t.card} flex flex-wrap items-center justify-between gap-3 shadow-sm`}>
         <div className="flex items-center gap-2">
