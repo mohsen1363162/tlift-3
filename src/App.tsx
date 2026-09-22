@@ -1,11 +1,9 @@
-import { useMemo, useState, useEffect, lazy, Suspense } from "react";
+import { useMemo, useState, useEffect, useRef, lazy, Suspense } from "react";
 import {
   ArrowLeft,
   RotateCw,
   Search,
   Plus,
-  Minus,
-  Minimize2,
   X,
   Lock,
   Megaphone,
@@ -140,6 +138,30 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [tabs, setTabs] = useState<Tab[]>([{ id: 1, title: "تب جدید", kind: "home" }]);
   const [active, setActive] = useState(1);
+  const activeHistory = useRef<number[]>([]);
+  const navigatingBack = useRef(false);
+  useEffect(() => {
+    if (navigatingBack.current) {
+      navigatingBack.current = false;
+      return;
+    }
+    const history = activeHistory.current;
+    if (history[history.length - 1] !== active) history.push(active);
+    if (history.length > 50) history.shift();
+  }, [active]);
+  const goBack = () => {
+    const history = activeHistory.current;
+    if (history.length <= 1) {
+      showToast("صفحه قبلی وجود ندارد");
+      return;
+    }
+    history.pop();
+    const previous = history[history.length - 1];
+    if (tabs.some((tab) => tab.id === previous)) {
+      navigatingBack.current = true;
+      setActive(previous);
+    }
+  };
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [androidModal, setAndroidModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -378,22 +400,13 @@ export default function App() {
   return (
     <div
       dir="rtl"
-      className={`min-h-screen w-full text-right ${dark ? "bg-neutral-900" : "bg-neutral-200"} p-3 font-[Tahoma,system-ui]`}
+      className={`min-h-screen w-full text-right ${dark ? "bg-[radial-gradient(circle_at_top_right,#243047_0%,#171717_48%,#101010_100%)]" : "bg-[radial-gradient(circle_at_top_right,#e0edff_0%,#f4f7fb_48%,#e9edf4_100%)]"} p-3 font-[Vazirmatn,Tahoma,system-ui]`}
     >
       <div
         className={`mx-auto flex h-[calc(100vh-24px)] max-w-[1400px] flex-col overflow-hidden rounded-md border ${t.border} ${t.body} shadow-2xl`}
       >
         {/* Title bar */}
         <div className={`flex items-center gap-2 ${t.chrome} px-2 py-1.5`}>
-          <div className="flex items-center gap-1">
-            <button type="button" className={`rounded p-1.5 ${t.hover} ${t.sub}`}>
-              <ArrowLeft size={16} />
-            </button>
-            <button type="button" className={`rounded p-1.5 ${t.hover} ${t.sub}`}>
-              <RotateCw size={16} />
-            </button>
-          </div>
-
           <div className={`flex h-7 w-[220px] items-center gap-2 rounded border px-2 ${t.input}`}>
             <Search size={13} className={t.sub} />
             <input
@@ -482,15 +495,12 @@ export default function App() {
             />
           </button>
 
-          <div className={`flex items-center gap-1 ${t.sub}`}>
-            <button type="button" className={`rounded p-1.5 ${t.hover}`}>
-              <Minus size={15} />
+          <div className={`flex items-center gap-1 border-r pr-2 ${t.border} ${t.sub}`}>
+            <button type="button" onClick={() => window.location.reload()} title="تازه‌سازی صفحه و دریافت آخرین اطلاعات" className={`rounded-lg p-2 ${t.hover} hover:text-sky-500`}>
+              <RotateCw size={17} />
             </button>
-            <button type="button" className={`rounded p-1.5 ${t.hover}`}>
-              <Minimize2 size={15} />
-            </button>
-            <button type="button" className="rounded p-1.5 hover:bg-red-600 hover:text-white">
-              <X size={15} />
+            <button type="button" onClick={goBack} title="بازگشت به صفحه قبلی برنامه" className={`rounded-lg p-2 ${t.hover} hover:text-violet-500`}>
+              <ArrowLeft size={18} />
             </button>
           </div>
         </div>
