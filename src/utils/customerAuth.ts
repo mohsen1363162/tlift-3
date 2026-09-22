@@ -59,6 +59,13 @@ export async function findUserByPhone(inputPhone: string): Promise<CustomerAuthD
   const cleaned = cleanIranianPhone(inputPhone);
   if (!cleaned || cleaned.length < 10) return null;
 
+  // مدیرعامل/رئیس شرکت تعریف‌شده در تنظیمات دسترسی
+  try {
+    const access = JSON.parse(localStorage.getItem('tlift_company_access_settings_v1') || '{"leaders":[]}');
+    const leader = (access.leaders || []).find((item: { phone?: string }) => cleanIranianPhone(item.phone || '') === cleaned);
+    if (leader) return { id: leader.id, name: leader.name, phone: formatDisplayPhone(leader.phone), role: 'operator', userType: leader.title, activity: 'مدیریت شرکت' };
+  } catch { /* تنظیمات هنوز ثبت نشده است */ }
+
   // ۱. بررسی بخش پرسنل، سرویس‌کاران و مدیر (قسمت «سرویس‌کار و مسئول انجام»)
   let staffList: Staff[] = [];
   try {

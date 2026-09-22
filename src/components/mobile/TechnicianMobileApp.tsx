@@ -48,6 +48,7 @@ import {
   useChecklist,
   useChecklistCategories,
   useActiveServiceAssignments,
+  useCompanyAccessSettings,
   MonthService,
   ServiceChecklistStatus,
   ServicePartItem,
@@ -153,6 +154,7 @@ export default function TechnicianMobileApp({
 }) {
   const contracts = useContracts();
   const activeServiceAssignments = useActiveServiceAssignments();
+  const accessSettings = useCompanyAccessSettings();
   const checklist = useChecklist();
   const categories = useChecklistCategories();
   const parts = useParts();
@@ -401,11 +403,11 @@ export default function TechnicianMobileApp({
 
   const startService = async (j: Job) => {
     const location = appStore.getContractGeoLocation(j.contract.id);
-    if (location) {
+    if (location && accessSettings.gpsRequired) {
       try {
         const current = await getCurrentPosition();
         const distance = distanceMeters(location.latitude, location.longitude, current.coords.latitude, current.coords.longitude);
-        if (distance > 300 + current.coords.accuracy) {
+        if (distance > accessSettings.gpsRadiusMeters + current.coords.accuracy) {
           notify(`شروع سرویس ممکن نیست؛ حدود ${Math.round(distance)} متر با ساختمان فاصله دارید`);
           return;
         }

@@ -58,6 +58,7 @@ const ChecklistSettingsPage = lazy(() => import("./components/ChecklistSettingsP
 const CpanelSettingsPage = lazy(() => import("./components/CpanelSettingsPage"));
 const TechnicianMobileApp = lazy(() => import("./components/mobile/TechnicianMobileApp"));
 const TechnicianDashboard = lazy(() => import("./components/TechnicianDashboard"));
+const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
 
 function PageLoader({ label = "در حال بارگذاری…" }: { label?: string }) {
@@ -70,7 +71,7 @@ function PageLoader({ label = "در حال بارگذاری…" }: { label?: str
     </div>
   );
 }
-import { useContracts, useMarketingItems, appStore, MonthService } from "./store";
+import { useContracts, useMarketingItems, useCompanyAccessSettings, appStore, MonthService } from "./store";
 import { useAuth } from "./contexts/AuthContext";
 import { checkForAppUpdates, APP_VERSION } from "./utils/appUpdater";
 import { CustomerAuthData } from "./utils/customerAuth";
@@ -95,6 +96,7 @@ type Tab = {
     | "checklist"
     | "cpanel"
     | "technicianDashboard"
+    | "accessManagement"
     | "serviceReport";
   contract?: Contract;
   monthService?: MonthService;
@@ -159,6 +161,14 @@ export default function App() {
 
   const contracts = useContracts();
   const marketingItems = useMarketingItems();
+  const accessSettings = useCompanyAccessSettings();
+  const currentLeader = accessSettings.leaders.find((leader) => leader.phone.replace(/\D/g, "").slice(-10) === (currentUserInfo?.phone || "").replace(/\D/g, "").slice(-10));
+  const visibleNavItems = currentUserInfo?.role !== "operator" ? navItems : navItems.filter((item) =>
+    item.id === "service" ||
+    item.id === "home" ||
+    (item.id === "settings" && currentLeader?.canAccessSettings) ||
+    (item.id === "file" && currentLeader?.canManageContracts)
+  );
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -202,7 +212,8 @@ export default function App() {
   };
 
   const openMenuItem = (label: string) => {
-    if (["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری", "قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"].includes(label))
+    if (label === "مدیریت مدیران و دسترسی‌ها") addTab("مدیریت دسترسی‌ها", "accessManagement");
+    else if (["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری", "قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"].includes(label))
       addTab("داشبورد سرویس‌کاران", "technicianDashboard");
     else if (label === "لیست مشتریان") addTab("مشتریان", "customers");
     else if (label === "چاپ گزارش مشتریان بدهکار") addTab("چاپ گزارش مشتریان بدهکار", "debtorReport");
@@ -488,7 +499,7 @@ export default function App() {
         <div className="relative flex min-h-0 flex-1">
           {/* Sidebar */}
           <div className={`order-first flex w-[68px] shrink-0 flex-col overflow-y-auto border-s ${t.border} ${t.chrome}`}>
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const on = openMenu === item.id;
               const hasFlyout = item.id === "marketing" || !!menus[item.id];
@@ -674,6 +685,8 @@ export default function App() {
               <PartsPage t={t} />
             ) : current?.kind === "technicianDashboard" ? (
               <TechnicianDashboard t={t} />
+            ) : current?.kind === "accessManagement" ? (
+              <AccessManagementPage t={t} />
             ) : current?.kind === "zones" ? (
               <ZonesPage t={t} onShowToast={showToast} />
             ) : current?.kind === "csvUpload" ? (
