@@ -204,31 +204,8 @@ export const initialParts: Part[] = [
   { id: 8, code: "PRT-108", name: "تراول کابل 24 رشته دت وایلر", category: "الکتریکال", unit: "متر", stock: 85, price: 950000 },
 ];
 
-export const initialCustomers: Customer[] = [
-  { id: 1, name: "* کردلو مجتمع صدرا", buildings: 1, active: true, sms: true },
-  { id: 2, name: "* صفرپور کوچه مظاهر محمدی *", buildings: 1, active: true, sms: true },
-  { id: 3, name: "* اصلانی ولیعصر ع *", buildings: 1, active: true, sms: true },
-  { id: 4, name: "* شریفی بلوک 20 *", buildings: 1, active: true, sms: true },
-  { id: 5, name: "* صالحی رسالت 11 *", buildings: 1, active: true, sms: true },
-  { id: 6, name: "* شهبازی پارس شرقی *", buildings: 1, active: true, sms: true },
-  { id: 7, name: "* گلزنی کوچه 37", buildings: 1, active: true, sms: true },
-  { id: 8, name: "* حامد عظیمی *", buildings: 1, active: true, sms: true },
-  { id: 9, name: "* حسینی فر", buildings: 1, active: true, sms: true },
-  { id: 10, name: "* حسینی بلوار معلم *", buildings: 1, active: true, sms: true },
-  { id: 11, name: "* دشتی بلوار کوچه محمد یزدی", buildings: 1, active: true, sms: true },
-  { id: 12, name: "* محمدی بلوار مالک اشتر", buildings: 1, active: true, sms: true },
-  { id: 13, name: "* پژوم فرزانگان 1", buildings: 1, active: true, sms: true },
-  { id: 14, name: "* کشانچی فارابی 14", buildings: 1, active: true, sms: true },
-  { id: 15, name: "* قدیری خیابان شهدای غواص", buildings: 0, active: true, sms: true },
-  { id: 16, name: "* چگینی حکمت 73 پلاک 19 ط 3", buildings: 1, active: true, sms: true },
-  { id: 17, name: "* مسعود حسینی فرزانگان 1", buildings: 1, active: true, sms: true },
-  { id: 18, name: "* نظری ساختمان امید", buildings: 0, active: true, sms: true },
-  { id: 19, name: "* داوود غیاثوند نرگس 24", buildings: 1, active: true, sms: true },
-  { id: 20, name: "* سرخیل توحید", buildings: 1, active: true, sms: true },
-  { id: 21, name: "* ابراهیمی فارابی 14", buildings: 1, active: true, sms: true },
-  { id: 22, name: "* گچ کوب خیابان سلیمانی پلاک 21", buildings: 1, active: true, sms: true },
-  { id: 23, name: "* غیاثوند عارف سپهر3", buildings: 1, active: true, sms: true },
-];
+// نرم‌افزار به‌صورت خام شروع می‌شود؛ اطلاعات واقعی فقط از CSV یا ثبت دستی وارد می‌شوند.
+export const initialCustomers: Customer[] = [];
 
 export const provinces = [
   "آذربایجان شرقی",
@@ -290,18 +267,7 @@ export type Contract = {
   customer?: string;
 };
 
-export const initialContracts: Contract[] = [
-  {
-    id: 1,
-    no: "5167",
-    building: "* غیاثوند عارف سپهر3",
-    manager: "خانم لطفی عارف سپهر",
-    zone: "عارف سپهر",
-    start: "2 خرداد 1405",
-    end: "31 اردیبهشت 1406",
-    kind: "general",
-  },
-];
+export const initialContracts: Contract[] = [];
 
 export const cities: Record<string, string[]> = {
   "تهران": ["تهران", "شهریار", "ری"],

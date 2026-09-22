@@ -57,16 +57,17 @@ export default function CsvUploadPage({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Contracts CSV state
-  const [contractsCsv, setContractsCsv] = useState<string>(RAW_CSV_DATA);
-  const [contractsFileName, setContractsFileName] = useState<string>("فایل_قراردادها_و_سرویس‌ها.csv");
-  const [contractsFileSize, setContractsFileSize] = useState<string>("~28 KB");
+  const [contractsCsv, setContractsCsv] = useState<string>("");
+  const [contractsFileName, setContractsFileName] = useState<string>("هنوز فایلی انتخاب نشده است");
+  const [contractsFileSize, setContractsFileSize] = useState<string>("0 KB");
 
   // Customers CSV state
-  const [customersCsv, setCustomersCsv] = useState<string>(RAW_CUSTOMERS_CSV_DATA);
-  const [customersFileName, setCustomersFileName] = useState<string>("فایل_لیست_مشتریان.csv");
-  const [customersFileSize, setCustomersFileSize] = useState<string>("~6 KB");
+  const [customersCsv, setCustomersCsv] = useState<string>("");
+  const [customersFileName, setCustomersFileName] = useState<string>("هنوز فایلی انتخاب نشده است");
+  const [customersFileSize, setCustomersFileSize] = useState<string>("0 KB");
 
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [confirmReset, setConfirmReset] = useState(false);
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
   const [importStatus, setImportStatus] = useState<{
     status: "idle" | "success" | "error";
@@ -340,6 +341,7 @@ export default function CsvUploadPage({
           <span className="opacity-40">|</span>
           <span className={t.sub}>مشتریان جاری:</span>
           <span className="font-bold text-sky-400">{currentCustomers.length.toLocaleString("fa-IR")}</span>
+          <button type="button" onClick={() => setConfirmReset(true)} className="mr-3 flex items-center gap-1 rounded-lg border border-rose-500/40 px-3 py-1.5 font-bold text-rose-500 hover:bg-rose-500/10"><Trash2 size={13}/> پاکسازی کامل اطلاعات</button>
         </div>
       </div>
 
@@ -967,6 +969,16 @@ export default function CsvUploadPage({
           </button>
         </div>
       </div>
+
+      {confirmReset && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+          <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${t.panel} ${t.border}`}>
+            <h3 className="flex items-center gap-2 font-bold text-rose-500"><AlertCircle size={20}/> پاکسازی کامل پایگاه اطلاعات</h3>
+            <p className={`mt-3 text-xs leading-6 ${t.sub}`}>تمام قراردادها، مشتریان، سوابق وابسته، زمان‌بندی‌ها و موقعیت‌های ساختمان پاک می‌شوند. این عملیات برای شروع خام و ورود CSV جدید است.</p>
+            <div className="mt-5 flex gap-2"><button onClick={() => setConfirmReset(false)} className={`flex-1 rounded-xl border py-2.5 text-xs ${t.border}`}>انصراف</button><button onClick={() => { appStore.clearAllCustomerContractData(); setConfirmReset(false); setImportStatus({ status: "success", message: "اطلاعات قراردادها و مشتریان پاک شد؛ اکنون فایل‌های CSV جدید را بارگذاری کنید." }); }} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-xs font-bold text-white">بله، همه پاک شوند</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

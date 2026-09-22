@@ -693,7 +693,8 @@ let checklistItems: ChecklistItem[] = loadStorage<ChecklistItem[]>("tlift_checkl
 let checklistCategories: string[] = loadStorage<string[]>("tlift_checklist_categories_v1", INITIAL_CHECKLIST_CATEGORIES);
 
 // Auto-seed CSV contracts if only default demo contracts are present
-const isCsvSeeded = loadStorage<boolean>("tlift_csv_seeded_v1", false);
+// داده نمونه هرگز خودکار وارد نمی‌شود؛ ورود اطلاعات فقط با اقدام صریح مدیر انجام می‌شود.
+const isCsvSeeded = true;
 if (!isCsvSeeded) {
   try {
     const csvRows = parseContractsCsv(RAW_CSV_DATA);
@@ -735,7 +736,7 @@ if (!isCsvSeeded) {
 }
 
 // Auto-seed customers if customers list is small/default
-const isCustCsvSeeded = loadStorage<boolean>("tlift_cust_csv_seeded_v1", false);
+const isCustCsvSeeded = true;
 if (!isCustCsvSeeded) {
   try {
     const custRows = parseCustomersCsv(RAW_CUSTOMERS_CSV_DATA);
@@ -859,6 +860,23 @@ registerApplier((key, data) => {
 
 // Store API
 export const appStore = {
+  // CONTRACTS & CUSTOMERS DATABASE RESET
+  clearAllCustomerContractData: () => {
+    contracts = [];
+    customers = [];
+    scheduledServices = [];
+    activeServiceAssignments = [];
+    contractGeoLocations = [];
+    Object.keys(contractDetailsMap).forEach((key) => delete contractDetailsMap[Number(key)]);
+    saveStorage("tlift_contracts", contracts);
+    saveStorage("tlift_customers", customers);
+    saveStorage("tlift_contract_details", contractDetailsMap);
+    saveStorage("tlift_scheduled_services", scheduledServices);
+    saveStorage("tlift_active_service_assignments_v1", activeServiceAssignments);
+    saveStorage("tlift_contract_geo_locations_v1", contractGeoLocations);
+    notifyListeners();
+  },
+
   // CONTRACTS
   getContracts: () => contracts,
   getOrCreateContractForCustomer: (customerName: string, debtorAmount?: number): Contract => {
