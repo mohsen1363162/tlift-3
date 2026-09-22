@@ -107,7 +107,7 @@ const LS = {
 const MAX_WORK_SESSION_SECONDS = 12 * 60 * 60;
 
 type Job = { contract: Contract; month: MonthService; overdue: boolean };
-type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "offlineService";
+type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "offlineService" | "offlineQueue";
 
 type OfflineServiceDraft = {
   id: string;
@@ -448,7 +448,7 @@ export default function TechnicianMobileApp({
       setSelected(null);
       setIsAdhocOfflineService(false);
       setOfflineCustomerName("");
-      setScreen("offlineService");
+      setScreen("offlineQueue");
       return;
     }
 
@@ -735,7 +735,8 @@ export default function TechnicianMobileApp({
           { l: "لیست خرابی", i: AlertTriangle, c: "text-red-500", badge: 1, go: () => setScreen("services") },
           { l: "ثبت خرابی", i: Plus, c: "text-orange-500", go: () => notify("فرم ثبت خرابی") },
           { l: "ثبت سرویس", i: Wrench, c: "text-blue-600", go: () => setScreen("services") },
-          { l: "ثبت سرویس آفلاین", i: CloudOff, c: "text-amber-600", badge: offlineDrafts.length || undefined, go: () => setScreen("offlineService") },
+          { l: "ثبت سرویس آفلاین", i: CloudOff, c: "text-amber-600", go: () => setScreen("offlineService") },
+          { l: "صف سرویس‌های آفلاین", i: Cloud, c: "text-emerald-600", badge: offlineDrafts.length || undefined, go: () => setScreen("offlineQueue") },
         ].map((b) => (
           <button
             key={b.l}
@@ -1306,9 +1307,21 @@ export default function TechnicianMobileApp({
           <Play size={15} fill="white" /> شروع ثبت آفلاین
         </button>
       </div>
+      <div className="mx-3 rounded-xl border border-dashed border-amber-300 bg-white p-3 text-center text-[11px] text-gray-500">
+        برای اتصال سرویس‌های ثبت‌شده به قراردادها، از گزینه جداگانه «صف سرویس‌های آفلاین» در صفحه اول استفاده کنید.
+      </div>
+      <div className="h-20" />
+    </>
+  );
 
+  const renderOfflineQueueView = () => (
+    <>
+      {header("صف و تخصیص سرویس‌های آفلاین", () => setScreen("home"))}
+      <div className="m-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11.5px] leading-5 text-blue-900">
+        هر سرویس آفلاین را بازبینی کنید، قرارداد و ماه سرویس مقصد را انتخاب کنید و سپس آن را آنلاین ثبت نمایید.
+      </div>
       <div className="mx-3 mb-2 flex items-center justify-between">
-        <h3 className="text-[13px] font-bold text-gray-800">صف سرویس‌های آفلاین</h3>
+        <h3 className="text-[13px] font-bold text-gray-800">سرویس‌های منتظر تخصیص</h3>
         <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800">{fa(offlineDrafts.length)} مورد</span>
       </div>
       <div className="mx-3 space-y-2 pb-20">
@@ -1671,8 +1684,9 @@ export default function TechnicianMobileApp({
         {screen === "calendar" && renderCalendarView()}
         {screen === "services" && renderServicesView()}
         {screen === "offlineService" && renderOfflineServiceView()}
+        {screen === "offlineQueue" && renderOfflineQueueView()}
 
-        {["home", "map", "calendar", "services", "offlineService"].includes(screen) && renderBottomNav()}
+        {["home", "map", "calendar", "services", "offlineService", "offlineQueue"].includes(screen) && renderBottomNav()}
         {renderDrawer()}
         {renderDurationReviewModal()}
         {renderPayModal()}
