@@ -3,6 +3,7 @@ import { pushKey, registerApplier, syncNow, recordOfflineService, getSyncState }
 import { Contract, Customer, Staff, initialContracts, initialCustomers, initialStaff } from "./data";
 import type { BuildingCsvRow } from "./utils/buildingsCsv";
 import { getContractServiceDay } from "./utils/serviceScheduleDays";
+import bootstrapData from "./data/tlift-bootstrap.json";
 import {
   RAW_CSV_DATA,
   RAW_CUSTOMERS_CSV_DATA,
@@ -229,6 +230,25 @@ function saveStorage<T>(key: string, data: T) {
   // آینه‌سازی در سرور (پرچم‌های seed همگام نمی‌شوند)
   if (!key.includes("seeded")) pushKey(key, data);
 }
+
+// اگر برنامه روی مرورگر/پیش‌نمایش تازه اجرا شود و دیتابیس محلی خالی باشد،
+// نسخه پایدار ثبت‌شده در مخزن خصوصی بازیابی و برای سرور نیز صف‌بندی می‌شود.
+function restoreBootstrapWhenEmpty() {
+  try {
+    const localContracts = JSON.parse(localStorage.getItem("tlift_contracts") || "[]");
+    const localCustomers = JSON.parse(localStorage.getItem("tlift_customers") || "[]");
+    if (Array.isArray(localContracts) && localContracts.length > 0 && Array.isArray(localCustomers) && localCustomers.length > 0) return;
+    const entries = (bootstrapData as { entries?: Record<string, unknown> }).entries || {};
+    Object.entries(entries).forEach(([key, value]) => {
+      writeLocalStorage(key, value);
+      pushKey(key, value);
+    });
+    localStorage.setItem("tlift_bootstrap_restored_v1", new Date().toISOString());
+  } catch (error) {
+    console.warn("Unable to restore bundled T-Lift backup", error);
+  }
+}
+restoreBootstrapWhenEmpty();
 
 // In-Memory Global State
 export type MarketingItem = {
