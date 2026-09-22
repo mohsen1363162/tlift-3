@@ -86,6 +86,12 @@ const normalizeJalaliDate = (value?: string) => {
     ? `${parts[1]}/${String(Number(parts[2])).padStart(2, "0")}/${String(Number(parts[3])).padStart(2, "0")}`
     : "";
 };
+const distanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const rad = (value: number) => (value * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 const monthNumber = (name: string) => Math.max(1, JALALI_MONTH_NAMES.indexOf(name) + 1);
 const jobDate = (job: Job) =>
   normalizeJalaliDate(job.month.plannedDate || job.month.date) ||
@@ -379,7 +385,32 @@ export default function TechnicianMobileApp({
     if (!dayStart) toggleDay();
   };
 
-  const startService = (j: Job) => {
+  const getCurrentPosition = () => new Promise<GeolocationPosition>((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("unsupported"));
+    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 15000 });
+  });
+
+  const registerContractPosition = async (contract: Contract) => {
+    try {
+      notify("در حال دریافت موقعیت دقیق ساختمان...");
+      const position = await getCurrentPosition();
+      appStore.setContractGeoLocation({ contractId: contract.id, latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy, updatedAt: Date.now() });
+      notify(`موقعیت ساختمان ثبت شد (دقت ${Math.round(position.coords.accuracy)} متر)`);
+    } catch { notify("دسترسی GPS ممکن نشد؛ مجوز موقعیت مکانی را فعال کنید"); }
+  };
+
+  const startService = async (j: Job) => {
+    const location = appStore.getContractGeoLocation(j.contract.id);
+    if (location) {
+      try {
+        const current = await getCurrentPosition();
+        const distance = distanceMeters(location.latitude, location.longitude, current.coords.latitude, current.coords.longitude);
+        if (distance > 300 + current.coords.accuracy) {
+          notify(`شروع سرویس ممکن نیست؛ حدود ${Math.round(distance)} متر با ساختمان فاصله دارید`);
+          return;
+        }
+      } catch { notify("برای شروع سرویس، GPS و مجوز موقعیت مکانی را فعال کنید"); return; }
+    }
     const myActive = activeServiceAssignments.find(
       (item) => item.technicianName === technician.name
     );
@@ -808,8 +839,9 @@ export default function TechnicianMobileApp({
         <div className="-mt-7 flex items-end justify-around px-2">
           {round(ImageIcon, "تصاویر", "bg-gray-500", () => notify("گالری تصاویر دستگاه"))}
           {round(Phone, "تماس", "bg-sky-600", () => {
-            if (c.phone) window.location.href = `tel:${c.phone}`;
-            else notify("شماره تماس ثبت نشده");
+            const phone = c.coordinatorPhone || c.phone;
+            if (phone) window.location.href = `tel:${phone}`;
+            else notify("شماره مسئول هماهنگی ثبت نشده است");
           })}
           {round(Play, "شروع سرویس", "bg-emerald-600", () => startService(selected), true)}
           {round(Navigation, "مسیریابی", "bg-violet-600", () =>
@@ -825,7 +857,7 @@ export default function TechnicianMobileApp({
 
         <div className="grid grid-cols-3 gap-2 p-3">
           {[
-            { l: "ثبت موقعیت", i: MapPin, run: () => notify("موقعیت مکانی ثبت شد") },
+            { l: "ثبت موقعیت", i: MapPin, run: () => registerContractPosition(c) },
             { l: "اطلاعات دستگاه", i: Info, run: () => notify("آسانسور کششی ۶ توقف - ۶۳۰ کیلوگرم") },
             { l: "نماینده‌ها", i: Users, run: () => notify(`${c.manager}${c.coordinator ? " / " + c.coordinator : ""}`) },
           ].map((b) => (
@@ -905,7 +937,16 @@ export default function TechnicianMobileApp({
               if (!rows.length) return null;
               return (
                 <div key={cat} className="mt-2 bg-white">
-                  <div className="bg-gray-100 px-3 py-1.5 text-[12px] font-bold text-gray-700">{cat}</div>
+                  <div className="flex items-center justify-between bg-gray-100 px-3 py-1.5 text-[12px] font-bold text-gray-700">
+                    <span>{cat}</span>
+                    <button type="button" title={`ثبت همه موارد ${cat} به‌عنوان سالم`} onClick={() => setResults((previous) => {
+                      const next = { ...previous };
+                      rows.forEach((row) => { next[row.id] = "ok"; });
+                      return next;
+                    })} className={`flex h-7 w-7 items-center justify-center rounded-full border-2 ${rows.every((row) => results[row.id] === "ok") ? "border-emerald-600 bg-emerald-600 text-white" : "border-emerald-500 bg-white text-emerald-600"}`}>
+                      <Check size={16} strokeWidth={3} />
+                    </button>
+                  </div>
                   {rows.map((r) => (
                     <div key={r.id} className="border-b px-3 py-2.5">
                       <div className="text-[12.5px] leading-5 text-gray-800">{r.question}</div>

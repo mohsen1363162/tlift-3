@@ -242,6 +242,8 @@ const INITIAL_MARKETING_ITEMS: MarketingItem[] = [
   { id: "file:لیست مشتریان", name: "لیست مشتریان", section: "پرونده", groupTitle: "مشتریان" },
 ];
 
+export type ContractGeoLocation = { contractId: number; latitude: number; longitude: number; accuracy?: number; updatedAt: number };
+
 export type TechnicianPartDelivery = {
   id: string;
   technicianName: string;
@@ -682,6 +684,7 @@ let marketingItems: MarketingItem[] = loadStorage<MarketingItem[]>("tlift_market
 let scheduledServices: ScheduledService[] = loadStorage<ScheduledService[]>("tlift_scheduled_services", INITIAL_SCHEDULED_SERVICES);
 let activeServiceAssignments: ActiveServiceAssignment[] = loadStorage<ActiveServiceAssignment[]>("tlift_active_service_assignments_v1", []);
 let technicianPartDeliveries: TechnicianPartDelivery[] = loadStorage<TechnicianPartDelivery[]>("tlift_technician_part_deliveries_v1", []);
+let contractGeoLocations: ContractGeoLocation[] = loadStorage<ContractGeoLocation[]>("tlift_contract_geo_locations_v1", []);
 let zones: ZoneItem[] = loadStorage<ZoneItem[]>("tlift_zones_v2", INITIAL_ZONES);
 let checklistItems: ChecklistItem[] = loadStorage<ChecklistItem[]>("tlift_checklist_v1", INITIAL_CHECKLIST);
 let checklistCategories: string[] = loadStorage<string[]>("tlift_checklist_categories_v1", INITIAL_CHECKLIST_CATEGORIES);
@@ -821,6 +824,9 @@ registerApplier((key, data) => {
       break;
     case "tlift_technician_part_deliveries_v1":
       technicianPartDeliveries = data as TechnicianPartDelivery[];
+      break;
+    case "tlift_contract_geo_locations_v1":
+      contractGeoLocations = data as ContractGeoLocation[];
       break;
     case "tlift_zones_v2":
       zones = data as ZoneItem[];
@@ -1488,6 +1494,14 @@ export const appStore = {
     saveStorage("tlift_marketing_items", marketingItems);
     notifyListeners();
   },
+  // CONTRACT GPS LOCATIONS
+  getContractGeoLocation: (contractId: number) => contractGeoLocations.find((item) => item.contractId === contractId),
+  setContractGeoLocation: (location: ContractGeoLocation) => {
+    contractGeoLocations = [location, ...contractGeoLocations.filter((item) => item.contractId !== location.contractId)];
+    saveStorage("tlift_contract_geo_locations_v1", contractGeoLocations);
+    notifyListeners();
+  },
+
   // TECHNICIAN PART DELIVERIES
   getTechnicianPartDeliveries: () => technicianPartDeliveries,
   addTechnicianPartDelivery: (delivery: Omit<TechnicianPartDelivery, "id">) => {
