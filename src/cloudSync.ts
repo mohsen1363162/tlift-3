@@ -41,8 +41,10 @@ const DEFAULT_INTERVAL_MINUTES = 5; // پیش‌فرض: هر ۵ دقیقه
 // ── بک‌اند همگام‌سازی ──
 // پیش‌فرض: سرویس PHP روی هاست خود سایت (api/sync.php) — بدون نیاز به سوپابیس.
 // فقط اگر VITE_SUPABASE_URL تنظیم شده باشد از سوپابیس استفاده می‌شود.
+const isArenaPreview = typeof window !== "undefined" && window.location.hostname.endsWith(".e2b.app");
 const SYNC_API =
-  (import.meta.env.VITE_SYNC_API as string | undefined) || "/api/sync.php";
+  (import.meta.env.VITE_SYNC_API as string | undefined) ||
+  (isArenaPreview ? "https://emami-asemansara.ir/api/sync.php" : "/api/sync.php");
 const SYNC_TOKEN =
   (import.meta.env.VITE_SYNC_TOKEN as string | undefined) ||
   "tlift-asemansara-1405";

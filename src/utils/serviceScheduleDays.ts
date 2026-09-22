@@ -32,5 +32,11 @@ export const SERVICE_DAY_BY_CONTRACT: Record<string, number> = Object.fromEntrie
   Object.entries(groups).flatMap(([day, contracts]) => contracts.map(contractNo => [contractNo, Number(day)]))
 );
 
+const normalizeContractNo = (value: string | number) => String(value)
+  .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+  .replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+  .replace(/[^0-9]/g, "")
+  .replace(/^0+/, "");
+
 export const getContractServiceDay = (contractNo: string | number) =>
-  SERVICE_DAY_BY_CONTRACT[String(contractNo).replace(/[^0-9]/g, "")] || 26;
+  SERVICE_DAY_BY_CONTRACT[normalizeContractNo(contractNo)] || 26;
