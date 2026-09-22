@@ -270,12 +270,14 @@ export default function TechnicianMobileApp({
   /* -------------------------------- jobs --------------------------------- */
   const jobs = useMemo<Job[]>(() => {
     const out: Job[] = [];
-    contracts.forEach((c, idx) => {
-      const details = appStore.getContractDetails(c.id);
-      const m = details.months.find((x) => !x.done);
-      if (m) out.push({ contract: c, month: m, overdue: idx % 3 === 2 });
+    contracts.forEach((contract) => {
+      const details = appStore.getContractDetails(contract.id);
+      details.months.forEach((month) => {
+        out.push({ contract, month, overdue: false });
+      });
     });
-    return out;
+    // سرویس‌های انجام‌نشده همیشه بالاتر و انجام‌شده‌ها پایین فهرست می‌آیند.
+    return out.sort((a, b) => Number(a.month.done) - Number(b.month.done) || jobDate(a).localeCompare(jobDate(b)));
   }, [contracts, tick % 5 === 0 ? tick : 0]);
   const todayJobs = jobs.filter((j) => !j.overdue);
   const pastJobs = jobs.filter((j) => j.overdue);
@@ -721,7 +723,7 @@ export default function TechnicianMobileApp({
     );
     return (
     <button
-      key={j.contract.id}
+      key={`${j.contract.id}-${j.month.id}`}
       type="button"
       onClick={() => {
         setSelected(j);
@@ -741,18 +743,16 @@ export default function TechnicianMobileApp({
           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
             سرویس {j.month.m} {j.month.y}
           </span>
-          {activeAssignment ? (
+          {j.month.done ? (
+            <span className="rounded-full border border-emerald-400 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">
+              ✓ انجام شد توسط {j.month.doneBy || j.month.techs?.[0] || "سرویس‌کار"}
+            </span>
+          ) : activeAssignment ? (
             <span className="rounded bg-blue-100 px-1.5 py-0.5 font-bold text-blue-700">
               در حال انجام توسط {activeAssignment.technicianName}
             </span>
           ) : (
-            <span
-              className={`rounded px-1.5 py-0.5 ${
-                j.overdue ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-700"
-              }`}
-            >
-              {j.overdue ? "تاریخ گذشته" : "امروز"}
-            </span>
+            <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-600">انجام‌نشده</span>
           )}
         </div>
       </div>
@@ -1463,11 +1463,11 @@ export default function TechnicianMobileApp({
                   type="button"
                   onClick={() => setSelectedCalendarDate(date)}
                   className={`relative flex aspect-square items-center justify-center rounded-xl text-[12px] font-semibold transition ${
-                    active ? "bg-blue-600 text-white shadow-md" : hasJobs ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300" : "text-gray-600 hover:bg-gray-50"
+                    active ? "bg-blue-100 text-blue-900 ring-2 ring-blue-500 shadow-sm" : "text-gray-700 hover:bg-gray-50"
                   }`}
                 >
                   {fa(day)}
-                  {hasJobs && <span className={`absolute bottom-1 h-1.5 w-1.5 rounded-full ${active ? "bg-white" : "bg-emerald-500"}`} />}
+                  {hasJobs && <span className="absolute bottom-1 h-1.5 w-1.5 rounded-full bg-red-500" />}
                 </button>
               );
             })}
