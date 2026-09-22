@@ -549,7 +549,7 @@ export default function ContractView({
                   {/* Top info row: day + quick window icon */}
                   <div className="flex w-full items-center justify-between">
                     <span className="text-[13.5px] font-bold font-mono">
-                      {fa(26)}
+                      {fa(s.plannedDate?.split(/[/-]/).pop() || "-")}
                     </span>
                     <button
                       type="button"
