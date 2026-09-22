@@ -880,7 +880,11 @@ export const appStore = {
   },
 
   // CONTRACTS
-  getContracts: () => contracts,
+  getContracts: () => {
+    // هنگام بارگذاری فهرست، تاریخ تمام قراردادهای موجود نیز یک‌جا با برنامه رسمی تطبیق داده می‌شود.
+    contracts.forEach((contract) => appStore.getContractDetails(contract.id));
+    return contracts;
+  },
   getOrCreateContractForCustomer: (customerName: string, debtorAmount?: number): Contract => {
     const cleanName = customerName.replace(/^\*\s*/, "").trim();
     // Try to find existing
