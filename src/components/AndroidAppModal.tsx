@@ -11,8 +11,6 @@ import {
   WifiOff,
   ShieldCheck,
   RefreshCw,
-  FileDown,
-  Info,
 } from "lucide-react";
 import { usePWAInstall } from "../hooks/usePWAInstall";
 import { checkForAppUpdates, applyUpdateAndReload, APP_VERSION } from "../utils/appUpdater";
@@ -87,7 +85,7 @@ export default function AndroidAppModal({
               <h2 className="text-base font-bold text-neutral-900 dark:text-white flex items-center gap-1.5">
                 <span>تلیفت همراه</span>
                 <span className="rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[11px] font-medium">
-                  فایل نصبی APK و اندروید
+                  نصب امن اندروید
                 </span>
                 <span className="rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 text-[10px] font-mono">
                   v{APP_VERSION}
@@ -109,52 +107,26 @@ export default function AndroidAppModal({
 
         {/* Content */}
         <div className="overflow-y-auto py-4 space-y-4 text-[13px] text-neutral-700 dark:text-neutral-300">
-          {/* بخش اول و ویژه: دانلود مستقیم فایل نصبی با پسوند APK */}
+          {/* روش امن و ساده نصب: PWA بدون فایل WebView عمومی */}
           <div className="rounded-2xl border-2 border-emerald-500/30 bg-emerald-50/70 p-4 dark:border-emerald-500/30 dark:bg-emerald-950/30 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-bold text-emerald-900 dark:text-emerald-200 text-[14px]">
-                <FileDown size={22} className="text-emerald-600 dark:text-emerald-400" />
-                <span>دانلود مستقیم فایل نصبی با پسوند APK</span>
-              </div>
-              <span className="rounded-full bg-emerald-600 text-white px-2 py-0.5 text-[10.5px] font-bold">
-                نسخه نصبی گوشی
-              </span>
+            <div className="flex items-center gap-2 font-bold text-emerald-900 dark:text-emerald-200 text-[14px]">
+              <ShieldCheck size={22} className="text-emerald-600 dark:text-emerald-400" />
+              <span>نصب امن تلیفت روی گوشی</span>
             </div>
-
             <p className="text-[12px] leading-relaxed text-emerald-950/80 dark:text-emerald-300/90">
-              این فایل با پسوند رسمی <strong>.apk</strong> است و مستقیماً توسط سیستم‌عامل اندروید نصب می‌گردد. پس از دانلود، کافیست روی فایل لمس کرده و گزینه <strong>نصب (Install)</strong> را بزنید.
+              فایل عمومی «My WebView» حذف شده است. نسخه پیشنهادی مستقیماً از سایت نصب می‌شود، آیکون مستقل دارد و بدون دانلود مجدد همیشه آخرین نسخه را دریافت می‌کند.
             </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              <a
-                href="/Telift.apk"
-                download="Telift.apk"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 px-3 text-white font-bold shadow-md hover:bg-emerald-700 active:scale-[0.98] transition text-[13px]"
-              >
-                <Download size={18} />
-                <span>دانلود Telift.apk (۷.۳ MB)</span>
-              </a>
-
-              <a
-                href="/Telift.apk"
-                download="asemansara.apk"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-600/30 bg-white dark:bg-neutral-800 py-3 px-3 text-emerald-800 dark:text-emerald-300 font-medium hover:bg-emerald-50 dark:hover:bg-neutral-750 transition text-[12px]"
-              >
-                <Download size={15} />
-                <span>لینک دانلود کمکی (asemansara.apk)</span>
-              </a>
-            </div>
-
-            <div className="text-[11px] text-emerald-800/90 dark:text-emerald-400 flex items-start gap-1.5 bg-emerald-100/50 dark:bg-emerald-900/30 p-2 rounded-lg">
-              <Info size={14} className="shrink-0 mt-0.5" />
-              <span>
-                نکته: در صورت مشاهده پیام امنیتی گوشی، روی <strong>Settings</strong> و سپس فعال کردن <strong>Allow from this source (اجازه نصب از این منبع)</strong> بزنید تا نصب کامل شود.
-              </span>
-            </div>
+            {isInstalled ? (
+              <div className="rounded-xl bg-emerald-600 px-3 py-3 text-center font-bold text-white">تلیفت روی این دستگاه نصب است</div>
+            ) : isInstallable ? (
+              <button type="button" onClick={handleInstallClick} disabled={installing} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 font-bold text-white shadow-md hover:bg-emerald-700 disabled:opacity-60">
+                <Download size={18}/>{installing ? "در حال نصب..." : "نصب تلیفت روی صفحه اصلی گوشی"}
+              </button>
+            ) : (
+              <div className="rounded-xl bg-white/70 p-3 text-[11.5px] leading-6 dark:bg-neutral-900/60">
+                در Chrome منوی سه‌نقطه را باز کنید و گزینه <strong>Install app</strong> یا <strong>افزودن به صفحه اصلی</strong> را بزنید.
+              </div>
+            )}
           </div>
 
           {/* بخش دوم: دکمه آپدیت و بروزرسانی نرم‌افزار */}
