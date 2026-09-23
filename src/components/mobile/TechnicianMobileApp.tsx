@@ -313,6 +313,7 @@ export default function TechnicianMobileApp({
   const [serviceQuery, setServiceQuery] = useState("");
 
   const [selected, setSelected] = useState<Job | null>(null);
+  const [locationDraft, setLocationDraft] = useState<{ contract: Contract; latitude: number; longitude: number; x: number; y: number } | null>(null);
 
   /* ----------------------------- active service -------------------------- */
   const [jobStart, setJobStart] = useState<number | null>(null);
@@ -425,12 +426,28 @@ export default function TechnicianMobileApp({
   });
 
   const registerContractPosition = async (contract: Contract) => {
+    const saved = appStore.getContractGeoLocation(contract.id);
     try {
-      notify("در حال دریافت موقعیت دقیق ساختمان...");
-      const position = await getCurrentPosition();
-      appStore.setContractGeoLocation({ contractId: contract.id, latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy, updatedAt: Date.now() });
-      notify(`موقعیت ساختمان ثبت شد (دقت ${Math.round(position.coords.accuracy)} متر)`);
+      notify("در حال دریافت موقعیت اولیه؛ سپس نشانگر را دقیق تنظیم کنید...");
+      const position = saved ? null : await getCurrentPosition();
+      setLocationDraft({
+        contract,
+        latitude: saved?.latitude ?? position!.coords.latitude,
+        longitude: saved?.longitude ?? position!.coords.longitude,
+        x: 50,
+        y: 48,
+      });
     } catch { notify("دسترسی GPS ممکن نشد؛ مجوز موقعیت مکانی را فعال کنید"); }
+  };
+
+  const saveLocationDraft = () => {
+    if (!locationDraft) return;
+    // هر پیکسل جابه‌جایی در این نمای نزدیک تقریباً معادل یک متر است.
+    const latitude = locationDraft.latitude + (48 - locationDraft.y) * 0.00001;
+    const longitude = locationDraft.longitude + (locationDraft.x - 50) * 0.00001;
+    appStore.setContractGeoLocation({ contractId: locationDraft.contract.id, latitude, longitude, accuracy: 5, updatedAt: Date.now() });
+    setLocationDraft(null);
+    notify("موقعیت دقیق ساختمان ثبت شد");
   };
 
   const startService = async (j: Job) => {
@@ -818,15 +835,15 @@ export default function TechnicianMobileApp({
         ))}
       </div>
 
-      <div className="mx-3 rounded-xl border border-dashed border-gray-300 bg-white p-3 text-center text-[12.5px] text-gray-500">
+      <div className={`mx-3 rounded-xl p-3 text-center text-[12.5px] shadow-sm ${jobStart && selected ? "border border-blue-500 bg-gradient-to-l from-blue-600 to-blue-500 text-white" : "border border-dashed border-gray-300 bg-white text-gray-500"}`}>
         {jobStart && selected ? (
           <div className="space-y-2 text-right">
-            <button type="button" onClick={() => setScreen("work")} className="w-full rounded-lg bg-blue-50 p-2">
+            <button type="button" onClick={() => setScreen("work")} className="w-full rounded-lg p-2 text-white">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-blue-700">کار جاری: {selected.contract.building}</span>
-                <span className="rounded bg-blue-600 px-2 py-0.5 font-mono text-white">{fmtDur(jobSec)}</span>
+                <span className="font-bold">▶ در حال انجام — {selected.contract.building}</span>
+                <span className="rounded bg-white/20 px-2 py-0.5 font-mono text-white">{fmtDur(jobSec)}</span>
               </div>
-              <div className="mt-1 text-[10.5px] text-blue-500">برای ادامه سرویس لمس کنید</div>
+              <div className="mt-1 text-[10.5px] text-blue-100">برای ادامه سرویس لمس کنید</div>
             </button>
             <button type="button" onClick={() => {
               if (!window.confirm("سرویس فعال لغو شود؟ اطلاعات ثبت‌نشده این سرویس حذف خواهد شد.")) return;
@@ -1769,6 +1786,37 @@ export default function TechnicianMobileApp({
         {renderDrawer()}
         {renderDurationReviewModal()}
         {renderPayModal()}
+        {locationDraft && (
+          <div className="fixed inset-0 z-[75] flex items-end justify-center bg-black/55 p-3 sm:items-center">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div><div className="text-[14px] font-bold">تنظیم دقیق موقعیت ساختمان</div><div className="text-[10.5px] text-gray-500">{locationDraft.contract.building}</div></div>
+                <button type="button" onClick={() => setLocationDraft(null)} className="rounded-full bg-gray-100 p-2"><X size={16}/></button>
+              </div>
+              <div
+                className="relative h-[48vh] min-h-[320px] touch-none overflow-hidden bg-blue-50"
+                onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+                onPointerMove={(event) => {
+                  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const x = Math.max(4, Math.min(96, ((event.clientX - rect.left) / rect.width) * 100));
+                  const y = Math.max(8, Math.min(92, ((event.clientY - rect.top) / rect.height) * 100));
+                  setLocationDraft((draft) => draft ? { ...draft, x, y } : null);
+                }}
+              >
+                <iframe title="نقشه تنظیم موقعیت" className="pointer-events-none h-full w-full border-0 opacity-90" src={`https://www.openstreetmap.org/export/embed.html?bbox=${locationDraft.longitude - 0.003}%2C${locationDraft.latitude - 0.003}%2C${locationDraft.longitude + 0.003}%2C${locationDraft.latitude + 0.003}&layer=mapnik`} />
+                <div style={{ left: `${locationDraft.x}%`, top: `${locationDraft.y}%` }} className="pointer-events-none absolute -translate-x-1/2 -translate-y-full drop-shadow-lg">
+                  <MapPin size={42} fill="#dc2626" className="text-white"/>
+                </div>
+                <div className="pointer-events-none absolute bottom-3 left-3 right-3 rounded-xl bg-white/90 p-2 text-center text-[11px] font-bold text-gray-700 shadow">نشانگر قرمز را با انگشت روی ورودی دقیق ساختمان ببرید</div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 p-3">
+                <button type="button" onClick={() => setLocationDraft(null)} className="rounded-xl border py-3 text-[12px]">انصراف</button>
+                <button type="button" onClick={saveLocationDraft} className="rounded-xl bg-emerald-600 py-3 text-[12px] font-bold text-white">ثبت نهایی مکان</button>
+              </div>
+            </div>
+          </div>
+        )}
         <AndroidAppModal open={androidModal} onClose={() => setAndroidModal(false)} />
 
         {toast && (
