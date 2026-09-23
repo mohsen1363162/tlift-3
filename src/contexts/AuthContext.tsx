@@ -50,11 +50,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const savedCustomer = localStorage.getItem(CUSTOMER_SESSION_KEY);
     if (savedCustomer) {
       try {
-        const parsed = JSON.parse(savedCustomer) as CustomerAuthData;
+        const saved = JSON.parse(savedCustomer) as CustomerAuthData;
+        const isOwnerPhone = saved.phone?.replace(/\D/g, '').endsWith('9192868509');
+        const parsed: CustomerAuthData = isOwnerPhone
+          ? { ...saved, id: 'system_admin_mohsen_emami', name: 'محسن امامی برسری', phone: '09192868509', role: 'admin', userType: 'مدیر شرکت و تکنسین سرویس', activity: 'مدیریت شرکت و سرویس آسانسور' }
+          : saved;
+        if (isOwnerPhone) localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(parsed));
         setCurrentUserInfo(parsed);
         const isSystemAdmin =
           parsed.role === 'admin' ||
-          parsed.phone?.includes('09192868509') ||
+          isOwnerPhone ||
           parsed.name?.includes('محسن امامی');
 
         setUser({
@@ -120,13 +125,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const loginAsCustomer = (userData: CustomerAuthData) => {
+  const loginAsCustomer = (incomingData: CustomerAuthData) => {
+    const isOwnerPhone = incomingData.phone?.replace(/\D/g, '').endsWith('9192868509');
+    const userData: CustomerAuthData = isOwnerPhone
+      ? { ...incomingData, id: 'system_admin_mohsen_emami', name: 'محسن امامی برسری', phone: '09192868509', role: 'admin', userType: 'مدیر شرکت و تکنسین سرویس', activity: 'مدیریت شرکت و سرویس آسانسور' }
+      : incomingData;
     localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(userData));
     setCurrentUserInfo(userData);
 
     const isSystemAdmin =
       userData.role === 'admin' ||
-      userData.phone?.includes('09192868509') ||
+      isOwnerPhone ||
       userData.name?.includes('محسن امامی');
 
     const simUser = {
