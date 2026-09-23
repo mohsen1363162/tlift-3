@@ -65,7 +65,7 @@ import {
   formatDurationPersian,
   JALALI_MONTH_NAMES,
 } from "../../utils/workHoursTracker";
-import { getShamsiDaysInMonth, getShamsiFirstDayOfWeek } from "../../utils/dateConverter";
+import { getShamsiDaysInMonth, getShamsiFirstDayOfWeek, jalaliToGregorian } from "../../utils/dateConverter";
 import { checkForAppUpdates, APP_VERSION } from "../../utils/appUpdater";
 
 /* -------------------------------------------------------------------------- */
@@ -98,6 +98,14 @@ const monthNumber = (name: string) => Math.max(1, JALALI_MONTH_NAMES.indexOf(nam
 const jobDate = (job: Job) =>
   normalizeJalaliDate(job.month.plannedDate || job.month.date) ||
   `${job.month.y}/${String(monthNumber(job.month.m)).padStart(2, "0")}/${String(job.month.id || 1).padStart(2, "0")}`;
+
+const jalaliDateTimestamp = (value: string) => {
+  const normalized = normalizeJalaliDate(value);
+  const match = normalized.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (!match) return 0;
+  const [gy, gm, gd] = jalaliToGregorian(Number(match[1]), Number(match[2]), Number(match[3]));
+  return new Date(gy, gm - 1, gd).setHours(0, 0, 0, 0);
+};
 
 const nowTime = () => {
   const d = new Date();
@@ -279,8 +287,16 @@ export default function TechnicianMobileApp({
     // سرویس‌های انجام‌نشده همیشه بالاتر و انجام‌شده‌ها پایین فهرست می‌آیند.
     return out.sort((a, b) => Number(a.month.done) - Number(b.month.done) || jobDate(a).localeCompare(jobDate(b)));
   }, [contracts, tick % 5 === 0 ? tick : 0]);
-  const todayJobs = jobs.filter((j) => !j.overdue);
-  const pastJobs = jobs.filter((j) => j.overdue);
+  const currentJalaliDate = normalizeJalaliDate(
+    new Intl.DateTimeFormat("fa-IR-u-ca-persian", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())
+  );
+  const todayTimestamp = jalaliDateTimestamp(currentJalaliDate);
+  const thirtyDaysAgo = todayTimestamp - 30 * 24 * 60 * 60 * 1000;
+  const todayJobs = jobs.filter((job) => jobDate(job) === currentJalaliDate);
+  const pastJobs = jobs.filter((job) => {
+    const timestamp = jalaliDateTimestamp(jobDate(job));
+    return timestamp >= thirtyDaysAgo && timestamp < todayTimestamp;
+  });
 
   const initialCalendar = getCurrentJalaliMonthInfo();
   const [calendarYear, setCalendarYear] = useState(initialCalendar.year);
@@ -302,6 +318,19 @@ export default function TechnicianMobileApp({
   const [jobStart, setJobStart] = useState<number | null>(null);
   const [jobStartClock, setJobStartClock] = useState<string>("");
   const jobSec = jobStart ? Math.floor((Date.now() - jobStart) / 1000) : 0;
+
+  // سرویس فعال بعد از Refresh نیز باید در کادر «کار جاری» باقی بماند.
+  useEffect(() => {
+    const activeAssignment = activeServiceAssignments.find((item) => item.technicianName === technician.name);
+    if (!activeAssignment) return;
+    const activeJob = jobs.find((job) => job.contract.id === activeAssignment.contractId && job.month.id === activeAssignment.monthId);
+    if (!activeJob) return;
+    if (!selected || selected.contract.id !== activeJob.contract.id || selected.month.id !== activeJob.month.id) setSelected(activeJob);
+    if (jobStart !== activeAssignment.startedAt) {
+      setJobStart(activeAssignment.startedAt);
+      setJobStartClock(new Date(activeAssignment.startedAt).toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" }));
+    }
+  }, [activeServiceAssignments, jobs, technician.name]);
 
   const [workTab, setWorkTab] = useState<"checklist" | "parts" | "faults">("checklist");
   const [results, setResults] = useState<Record<number, ServiceChecklistStatus>>({});
@@ -791,12 +820,20 @@ export default function TechnicianMobileApp({
 
       <div className="mx-3 rounded-xl border border-dashed border-gray-300 bg-white p-3 text-center text-[12.5px] text-gray-500">
         {jobStart && selected ? (
-          <button type="button" onClick={() => setScreen("work")} className="w-full text-right">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-blue-600">کار جاری: {selected.contract.building}</span>
-              <span className="rounded bg-blue-600 px-2 py-0.5 font-mono text-white">{fmtDur(jobSec)}</span>
-            </div>
-          </button>
+          <div className="space-y-2 text-right">
+            <button type="button" onClick={() => setScreen("work")} className="w-full rounded-lg bg-blue-50 p-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-blue-700">کار جاری: {selected.contract.building}</span>
+                <span className="rounded bg-blue-600 px-2 py-0.5 font-mono text-white">{fmtDur(jobSec)}</span>
+              </div>
+              <div className="mt-1 text-[10.5px] text-blue-500">برای ادامه سرویس لمس کنید</div>
+            </button>
+            <button type="button" onClick={() => {
+              if (!window.confirm("سرویس فعال لغو شود؟ اطلاعات ثبت‌نشده این سرویس حذف خواهد شد.")) return;
+              appStore.finishActiveService(selected.contract.id, selected.month.id, technician.name);
+              resetWork(); setSelected(null); notify("سرویس فعال لغو شد");
+            }} className="w-full rounded-lg border border-red-200 bg-red-50 py-2 text-[11px] font-bold text-red-600">لغو کار فعال</button>
+          </div>
         ) : (
           "کار فعالی ندارید"
         )}
