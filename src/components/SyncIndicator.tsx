@@ -59,6 +59,8 @@ export default function SyncIndicator({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const hasInternet = typeof navigator === "undefined" ? true : navigator.onLine;
+  const serverUnavailable = hasInternet && !s.isManualOffline && (s.status === "offline" || s.status === "error");
   const isOffline = s.status === "offline" || s.status === "error" || s.isManualOffline;
   const isSyncing = s.status === "syncing" || busy;
   const isOnline = s.status === "online";
@@ -280,7 +282,7 @@ export default function SyncIndicator({
                 : isOffline
                 ? s.offlineServicesCount > 0
                   ? `همگام‌سازی (${s.offlineServicesCount})`
-                  : "آفلاین (همگام‌سازی)"
+                  : serverUnavailable ? "سرور در دسترس نیست" : "آفلاین (همگام‌سازی)"
                 : "همگام‌سازی ابری"}
             </span>
 

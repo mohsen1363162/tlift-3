@@ -169,7 +169,9 @@ export default function TechnicianMobileApp({
   const parts = useParts();
   const sync = useSyncState();
   const [syncBusy, setSyncBusy] = useState(false);
-  const isOffline = sync.status === "offline" || sync.status === "error" || sync.isManualOffline;
+  const browserHasInternet = typeof navigator === "undefined" ? true : navigator.onLine;
+  const syncServerUnavailable = browserHasInternet && !sync.isManualOffline && (sync.status === "offline" || sync.status === "error");
+  const isOffline = !browserHasInternet || sync.isManualOffline || syncServerUnavailable;
   const isSyncing = sync.status === "syncing" || syncBusy;
 
   const handleManualSync = async () => {
@@ -747,8 +749,12 @@ export default function TechnicianMobileApp({
             <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-ping shrink-0" />
             <span>
               {sync.offlineServicesCount > 0
-                ? `حالت آفلاین: ${fa(sync.offlineServicesCount)} سرویس در صف ذخیره محلی آماده ارسال است`
-                : "اینترنت قطع است (گزینه آفلاین فعال) — می‌توانید سرویس را ثبت کنید"}
+                ? `${fa(sync.offlineServicesCount)} سرویس در صف امن دستگاه؛ پس از اتصال سرور ارسال می‌شود`
+                : syncServerUnavailable
+                ? "اینترنت وصل است، اما سرور همگام‌سازی پاسخ نمی‌دهد؛ اطلاعات روی گوشی محفوظ است"
+                : sync.isManualOffline
+                ? "حالت آفلاین دستی فعال است — برای اتصال، کلید همگام‌سازی را روشن کنید"
+                : "اینترنت دستگاه قطع است — می‌توانید سرویس را ثبت کنید"}
             </span>
           </div>
           <button
