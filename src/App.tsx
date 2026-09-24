@@ -470,7 +470,7 @@ export default function App() {
             title="دانلود فایل نصبی APK و نسخه اندروید تلیفت"
             className="flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-emerald-700 shadow-sm transition"
           >
-            <Smartphone size={13} /> فایل نصبی و اندروید
+            <Smartphone size={13} /> نصب اپلیکیشن
           </button>
 
           <button

@@ -16,11 +16,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // روی هاست اشتراکی cPanel، Service Worker قدیمی باعث نمایش نسخه‌های منسوخ
-      // می‌شد. این Worker انتقالی خودش را حذف و کش‌های PWA قبلی را پاک می‌کند؛
-      // فایل‌های هش‌دار Vite همچنان توسط مرورگر بهینه کش می‌شوند.
-      selfDestroying: true,
-      injectRegister: false,
+      // Service Worker واقعی برای نصب روی گوشی و اجرای آفلاین فعال است.
+      // فایل‌های هش‌دار Vite و autoUpdate مانع ماندن کاربر روی نسخه قدیمی می‌شوند.
+      selfDestroying: false,
+      injectRegister: "auto",
       registerType: "autoUpdate",
       includeAssets: [
         "favicon.ico",
