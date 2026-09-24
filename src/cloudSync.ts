@@ -245,28 +245,38 @@ function describeSyncError(e: unknown): string {
 }
 
 // ── توابع سرویس PHP روی هاست (api/sync.php) ──
+const syncApiCandidates = () => {
+  const candidates = [SYNC_API];
+  if (typeof window !== "undefined" && !isArenaPreview) candidates.push("/sync.php");
+  return [...new Set(candidates)];
+};
+
 async function apiUpsert(key: string, data: unknown, updated_at: string) {
-  const res = await withTimeout(
-    fetch(`${SYNC_API}?token=${encodeURIComponent(SYNC_TOKEN)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, data, updated_at }),
-    })
-  );
-  if (!res.ok) throw new Error(`خطای سرور همگام‌سازی (HTTP ${res.status})`);
+  let lastError: unknown;
+  for (const endpoint of syncApiCandidates()) {
+    try {
+      const res = await withTimeout(fetch(`${endpoint}?token=${encodeURIComponent(SYNC_TOKEN)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, data, updated_at }),
+      }));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return;
+    } catch (error) { lastError = error; }
+  }
+  throw new Error(`خطای سرور همگام‌سازی: ${String((lastError as Error)?.message || lastError)}`);
 }
 
-async function apiSelectPrefix(
-  prefix: string
-): Promise<{ key: string; data: unknown; updated_at: string }[]> {
-  const res = await withTimeout(
-    fetch(
-      `${SYNC_API}?prefix=${encodeURIComponent(prefix)}&token=${encodeURIComponent(SYNC_TOKEN)}`
-    )
-  );
-  if (!res.ok) throw new Error(`خطای سرور همگام‌سازی (HTTP ${res.status})`);
-  const rows = await res.json();
-  return Array.isArray(rows) ? rows : [];
+async function apiSelectPrefix(prefix: string): Promise<{ key: string; data: unknown; updated_at: string }[]> {
+  let lastError: unknown;
+  for (const endpoint of syncApiCandidates()) {
+    try {
+      const res = await withTimeout(fetch(`${endpoint}?prefix=${encodeURIComponent(prefix)}&token=${encodeURIComponent(SYNC_TOKEN)}`));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = await res.json();
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) { lastError = error; }
+  }
+  throw new Error(`خطای سرور همگام‌سازی: ${String((lastError as Error)?.message || lastError)}`);
 }
 
 // ---- push (debounced per key) ----
