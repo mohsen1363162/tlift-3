@@ -41,6 +41,27 @@ export function getCurrentJalaliMonthInfo(): JalaliMonthInfo {
 }
 
 /**
+ * دریافت اطلاعات ماه شمسی گذشته سیستم
+ * (مثلاً اگر الان در مهرماه ۱۴۰۵ باشیم، ماه گذشته شهریور ۱۴۰۵ است)
+ */
+export function getPreviousJalaliMonthInfo(): JalaliMonthInfo {
+  const current = getCurrentJalaliMonthInfo();
+  let prevMonth = current.month - 1;
+  let prevYear = current.year;
+  if (prevMonth < 1) {
+    prevMonth = 12;
+    prevYear -= 1;
+  }
+  const monthName = JALALI_MONTH_NAMES[prevMonth - 1] || "شهریور";
+  return {
+    year: prevYear,
+    month: prevMonth,
+    monthName,
+    monthKey: `${prevYear}/${prevMonth}`,
+  };
+}
+
+/**
  * دریافت ثانیه‌های ثبت‌شده کار برای ماه شمسی جاری
  * در صورت شروع ماه جدید، مقدار بازگشتی دقیقاً صفر (0) خواهد بود.
  */

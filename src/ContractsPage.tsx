@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Pin,
   PinOff,
+  CalendarCheck,
 } from "lucide-react";
 import type { Theme } from "./theme";
 import { Contract } from "./data";
@@ -26,6 +27,43 @@ import ContractsFilterDrawer, {
 } from "./components/ContractsFilterDrawer";
 import PrintTableModal from "./components/PrintTableModal";
 import { exportToExcel } from "./utils/exportUtils";
+import { appStore } from "./store";
+import { getContractServiceDay } from "./utils/serviceScheduleDays";
+import { getContractOfficialFee } from "./data/contractServiceFees";
+
+const fa = (n: string | number) => String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]);
+
+export const getContractPlannedDay = (c: Contract): number => {
+  if (typeof (c as unknown as { serviceDay?: number }).serviceDay === "number" && (c as unknown as { serviceDay?: number }).serviceDay! > 0) {
+    return (c as unknown as { serviceDay?: number }).serviceDay!;
+  }
+  return getContractServiceDay(c.no);
+};
+
+export const formatContractServiceDay = (c: Contract): string => {
+  const day = getContractPlannedDay(c);
+  return `${fa(day)} هر ماه`;
+};
+
+export const getContractAmount = (c: Contract): number => {
+  const officialFee = getContractOfficialFee(c.no);
+  if (typeof officialFee === "number") {
+    return officialFee;
+  }
+  if (typeof c.monthlyServiceFee === "number" && c.monthlyServiceFee > 0) {
+    return c.monthlyServiceFee;
+  }
+  const details = appStore.getContractDetails(c.id);
+  const firstMonthWithAmount = details?.months?.find((m) => m.amount > 0);
+  if (firstMonthWithAmount) return firstMonthWithAmount.amount;
+  return c.monthlyServiceFee || 0;
+};
+
+export const formatContractAmount = (c: Contract): string => {
+  const amt = getContractAmount(c);
+  if (!amt || amt === 0) return "۰ ریال";
+  return `${fa(amt.toLocaleString("en-US"))} ریال`;
+};
 
 const INITIAL_COLUMNS: ColumnDef[] = [
   { key: "no", title: "شماره قرارداد", visible: true },
@@ -34,6 +72,8 @@ const INITIAL_COLUMNS: ColumnDef[] = [
   { key: "phone", title: "شماره تماس", visible: false },
   { key: "buildingCode", title: "شماره اشتراک ساختمان", visible: false },
   { key: "building", title: "نام ساختمان", visible: true },
+  { key: "serviceDay", title: "تاریخ سرویس در ماه", visible: true },
+  { key: "amount", title: "مبلغ قرارداد", visible: true },
   { key: "manager", title: "نام مسئول هماهنگی", visible: false },
   { key: "managerPhone", title: "شماره همراه مسئول هماهنگی", visible: false },
   { key: "locationStatus", title: "وضعیت موقعیت مکانی", visible: false },
@@ -70,8 +110,39 @@ export default function ContractsPage({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [columns, setColumns] = useState<ColumnDef[]>(INITIAL_COLUMNS);
+
+  // Persistent column settings
+  const COLUMNS_KEY = "tlift_contracts_columns_v3";
+  const [columns, setColumns] = useState<ColumnDef[]>(() => {
+    try {
+      const raw = localStorage.getItem(COLUMNS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as ColumnDef[];
+        return INITIAL_COLUMNS.map((initCol) => {
+          const found = saved.find((s) => s.key === initCol.key);
+          return found ? { ...initCol, visible: found.visible } : initCol;
+        });
+      }
+    } catch {
+      /* fallback */
+    }
+    return INITIAL_COLUMNS;
+  });
+
   const [filters, setFilters] = useState<ContractFilterState>(defaultContractFilters);
+
+  // Sorting
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortAsc, setSortAsc] = useState<boolean>(true);
+
+  const handleSort = (colKey: string) => {
+    if (sortCol === colKey) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortCol(colKey);
+      setSortAsc(true);
+    }
+  };
 
   const notify = (m: string) => {
     setToast(m);
@@ -106,9 +177,15 @@ export default function ContractsPage({
   };
 
   const handleToggleColumn = (key: string) => {
-    setColumns((prev) =>
-      prev.map((c) => (c.key === key ? { ...c, visible: !c.visible } : c))
-    );
+    setColumns((prev) => {
+      const updated = prev.map((c) => (c.key === key ? { ...c, visible: !c.visible } : c));
+      try {
+        localStorage.setItem(COLUMNS_KEY, JSON.stringify(updated));
+      } catch {
+        /* ignore */
+      }
+      return updated;
+    });
   };
 
   const filteredList = useMemo(() => {
@@ -143,13 +220,42 @@ export default function ContractsPage({
 
       return true;
     });
+
+    const result = [...list];
+    if (sortCol) {
+      result.sort((a, b) => {
+        let valA: any = "";
+        let valB: any = "";
+        if (sortCol === "serviceDay") {
+          valA = getContractPlannedDay(a);
+          valB = getContractPlannedDay(b);
+        } else if (sortCol === "amount") {
+          valA = getContractAmount(a);
+          valB = getContractAmount(b);
+        } else if (sortCol === "no") {
+          valA = parseInt(a.no.replace(/\D/g, ""), 10) || 0;
+          valB = parseInt(b.no.replace(/\D/g, ""), 10) || 0;
+        } else if (sortCol === "building") {
+          return sortAsc
+            ? a.building.localeCompare(b.building, "fa")
+            : b.building.localeCompare(a.building, "fa");
+        } else {
+          valA = (a as any)[sortCol] || "";
+          valB = (b as any)[sortCol] || "";
+        }
+        if (valA < valB) return sortAsc ? -1 : 1;
+        if (valA > valB) return sortAsc ? 1 : -1;
+        return 0;
+      });
+    }
+
     // pinned contracts float to the top (keeping pin order)
     const rank = (c: Contract) => {
       const i = pinned.indexOf(c.id);
       return i === -1 ? Number.MAX_SAFE_INTEGER : i;
     };
-    return [...list].sort((a, b) => rank(a) - rank(b));
-  }, [contracts, q, filters, pinned, onlyPinned]);
+    return result.sort((a, b) => rank(a) - rank(b));
+  }, [contracts, q, filters, pinned, onlyPinned, sortCol, sortAsc]);
 
   const effectivePageSize = pageSize === -1 ? (filteredList.length || 1) : pageSize;
   const totalPages = Math.ceil(filteredList.length / effectivePageSize) || 1;
@@ -166,6 +272,8 @@ export default function ContractsPage({
         key: c.key,
         title: c.title,
         render: (item: Record<string, unknown>) => {
+          if (c.key === "serviceDay") return formatContractServiceDay(item as unknown as Contract);
+          if (c.key === "amount") return formatContractAmount(item as unknown as Contract);
           if (c.key === "customer") return (item.manager as string) || (item.building as string);
           if (c.key === "isLegal") return "حقیقی";
           if (c.key === "buildingCode") return item.id;
@@ -301,10 +409,18 @@ export default function ContractsPage({
               {columns
                 .filter((c) => c.visible)
                 .map((col) => (
-                  <th key={col.key} className="whitespace-nowrap px-3 py-2.5 text-right font-normal">
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    className="cursor-pointer select-none whitespace-nowrap px-3 py-2.5 text-right font-normal hover:text-white transition"
+                    title={`مرتب‌سازی بر اساس ${col.title}`}
+                  >
                     <span className="flex items-center gap-1">
                       {col.title}
-                      <ChevronsUpDown size={11} className="opacity-50" />
+                      <ChevronsUpDown
+                        size={11}
+                        className={sortCol === col.key ? "text-violet-400 opacity-100" : "opacity-40"}
+                      />
                     </span>
                   </th>
                 ))}
@@ -350,6 +466,23 @@ export default function ContractsPage({
                       return (
                         <td key={col.key} className="whitespace-nowrap px-3 py-3 font-medium">
                           {c.building}
+                        </td>
+                      );
+                    }
+                    if (col.key === "serviceDay") {
+                      return (
+                        <td key={col.key} className="whitespace-nowrap px-3 py-3 font-medium">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-[11.5px] font-bold text-sky-400">
+                            <CalendarCheck size={13} className="text-sky-400 shrink-0" />
+                            <span>{formatContractServiceDay(c)}</span>
+                          </span>
+                        </td>
+                      );
+                    }
+                    if (col.key === "amount") {
+                      return (
+                        <td key={col.key} className="whitespace-nowrap px-3 py-3 font-mono text-[12px] font-bold text-emerald-400" dir="ltr">
+                          {formatContractAmount(c)}
                         </td>
                       );
                     }
@@ -632,6 +765,8 @@ export default function ContractsPage({
             key: c.key,
             title: c.title,
             render: (item: Record<string, unknown>) => {
+              if (c.key === "serviceDay") return formatContractServiceDay(item as unknown as Contract);
+              if (c.key === "amount") return formatContractAmount(item as unknown as Contract);
               if (c.key === "customer") return (item.manager as string) || (item.building as string);
               if (c.key === "isLegal") return "حقیقی";
               if (c.key === "buildingCode") return String(item.id);

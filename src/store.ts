@@ -3,6 +3,7 @@ import { pushKey, registerApplier, syncNow, recordOfflineService, getSyncState }
 import { Contract, Customer, Staff, initialContracts, initialCustomers, initialStaff } from "./data";
 import type { BuildingCsvRow } from "./utils/buildingsCsv";
 import { getContractServiceDay } from "./utils/serviceScheduleDays";
+import { getContractOfficialFee } from "./data/contractServiceFees";
 import bootstrapData from "./data/tlift-bootstrap.json";
 import {
   RAW_CSV_DATA,
@@ -249,6 +250,57 @@ function restoreBootstrapWhenEmpty() {
   }
 }
 restoreBootstrapWhenEmpty();
+
+// اعمال مبالغ واقعی و مصوب قراردادها از لیست رسمی مدیریت به حافظه مرورگر
+function syncOfficialContractFees() {
+  try {
+    const rawContracts = localStorage.getItem("tlift_contracts");
+    if (!rawContracts) return;
+    const storedContracts = JSON.parse(rawContracts) as Contract[];
+    if (!Array.isArray(storedContracts) || storedContracts.length === 0) return;
+
+    let contractsUpdated = false;
+    const updatedContracts = storedContracts.map((c) => {
+      const officialFee = getContractOfficialFee(c.no);
+      if (typeof officialFee === "number" && c.monthlyServiceFee !== officialFee) {
+        contractsUpdated = true;
+        return { ...c, monthlyServiceFee: officialFee };
+      }
+      return c;
+    });
+
+    if (contractsUpdated) {
+      writeLocalStorage("tlift_contracts", updatedContracts);
+    }
+
+    const rawDetails = localStorage.getItem("tlift_contract_details");
+    if (rawDetails) {
+      const detailsMap = JSON.parse(rawDetails) as Record<string, ContractDetails>;
+      let detailsUpdated = false;
+      Object.keys(detailsMap).forEach((cidStr) => {
+        const cid = Number(cidStr);
+        const c = updatedContracts.find((item) => item.id === cid);
+        if (!c) return;
+        const fee = getContractOfficialFee(c.no) ?? c.monthlyServiceFee ?? 0;
+        const details = detailsMap[cidStr];
+        if (details && Array.isArray(details.months)) {
+          details.months.forEach((m) => {
+            if (m.amount !== fee) {
+              m.amount = fee;
+              detailsUpdated = true;
+            }
+          });
+        }
+      });
+      if (detailsUpdated) {
+        writeLocalStorage("tlift_contract_details", detailsMap);
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to sync official contract fees", err);
+  }
+}
+syncOfficialContractFees();
 
 // In-Memory Global State
 export type MarketingItem = {
@@ -1096,15 +1148,17 @@ export const appStore = {
     const contract = contracts.find((item) => item.id === contractId);
     if (contract) {
       const serviceDay = getContractServiceDay(contract.no);
+      const officialFee = getContractOfficialFee(contract.no) ?? contract.monthlyServiceFee;
       const monthNumbers: Record<string, number> = { فروردین: 1, اردیبهشت: 2, خرداد: 3, تیر: 4, مرداد: 5, شهریور: 6, مهر: 7, آبان: 8, آذر: 9, دی: 10, بهمن: 11, اسفند: 12 };
       let changed = false;
       contractDetailsMap[contractId].months = contractDetailsMap[contractId].months.map((month) => {
         const monthNumber = monthNumbers[month.m];
         if (!monthNumber) return month;
         const plannedDate = `${month.y}/${String(monthNumber).padStart(2, "0")}/${String(serviceDay).padStart(2, "0")}`;
-        if (month.plannedDate === plannedDate) return month;
+        const targetAmount = typeof officialFee === "number" ? officialFee : month.amount;
+        if (month.plannedDate === plannedDate && month.amount === targetAmount) return month;
         changed = true;
-        return { ...month, plannedDate };
+        return { ...month, plannedDate, amount: targetAmount };
       });
       if (changed) saveStorage("tlift_contract_details", contractDetailsMap);
     }
@@ -1524,6 +1578,7 @@ export const appStore = {
 
   // CONTRACT GPS LOCATIONS
   getContractGeoLocation: (contractId: number) => contractGeoLocations.find((item) => item.contractId === contractId),
+  getAllContractGeoLocations: () => contractGeoLocations,
   setContractGeoLocation: (location: ContractGeoLocation) => {
     contractGeoLocations = [location, ...contractGeoLocations.filter((item) => item.contractId !== location.contractId)];
     saveStorage("tlift_contract_geo_locations_v1", contractGeoLocations);
@@ -1883,6 +1938,16 @@ export function useChecklistCategories() {
       return () => listeners.delete(callback);
     },
     () => checklistCategories
+  );
+}
+
+export function useContractGeoLocations() {
+  return useSyncExternalStore(
+    (callback) => {
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    },
+    () => contractGeoLocations
   );
 }
 

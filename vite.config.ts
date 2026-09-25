@@ -30,14 +30,14 @@ export default defineConfig({
         "pwa-512x512.png",
       ],
       manifest: {
-        id: "/tlift-mobile-v2",
-        name: "تلیفت همراه - آسمان سرا",
-        short_name: "تلیفت همراه",
-        description: "اپلیکیشن همراه تکنسین سرویس و مدیریت آسانسور شرکت آسمان سرا (emami-asemansara.ir)",
+        id: "/asemansara-app-v3",
+        name: "آسمانسرا",
+        short_name: "آسمانسرا",
+        description: "نرم‌افزار مستقل خدمات و مدیریت آسانسور آسمانسرا",
         theme_color: "#2563eb",
-        background_color: "#f3f4f6",
+        background_color: "#1e293b",
         display: "standalone",
-        display_override: ["standalone", "minimal-ui"],
+        display_override: ["window-controls-overlay", "standalone", "minimal-ui"],
         orientation: "portrait",
         dir: "rtl",
         lang: "fa",
@@ -57,6 +57,12 @@ export default defineConfig({
             purpose: "any",
           },
           {
+            src: "/pwa-192x192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "maskable",
+          },
+          {
             src: "/pwa-512x512.png",
             sizes: "512x512",
             type: "image/png",
@@ -69,6 +75,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       devOptions: {
         enabled: true,
@@ -104,11 +111,11 @@ export default defineConfig({
         const DATA_DIR = path.resolve(__dirname, ".sync-data");
         const TOKEN = "tlift-asemansara-1405";
         const fileFor = (key: unknown): string | null =>
-          typeof key === "string" && /^[A-Za-z0-9_\-]{1,120}$/.test(key)
+          typeof key === "string" && /^[A-Za-z0-9_-]{1,120}$/.test(key)
             ? path.join(DATA_DIR, key + ".json")
             : null;
 
-        server.middlewares.use("/api/sync.php", (req, res) => {
+        const syncHandler = (req: any, res: any) => {
           res.setHeader("Access-Control-Allow-Origin", "*");
           res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
           res.setHeader(
@@ -207,7 +214,10 @@ export default defineConfig({
 
           res.statusCode = 405;
           res.end(JSON.stringify({ error: "method not allowed" }));
-        });
+        };
+
+        server.middlewares.use("/api/sync.php", syncHandler);
+        server.middlewares.use("/sync.php", syncHandler);
       },
     },
   ],

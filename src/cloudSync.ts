@@ -39,12 +39,20 @@ const SYNC_INTERVAL_KEY = "tlift_sync_interval_minutes_v1";
 const DEFAULT_INTERVAL_MINUTES = 5; // پیش‌فرض: هر ۵ دقیقه
 
 // ── بک‌اند همگام‌سازی ──
-// پیش‌فرض: سرویس PHP روی هاست خود سایت (api/sync.php) — بدون نیاز به سوپابیس.
-// فقط اگر VITE_SUPABASE_URL تنظیم شده باشد از سوپابیس استفاده می‌شود.
-const isArenaPreview = typeof window !== "undefined" && window.location.hostname.endsWith(".e2b.app");
+// پیش‌فرض: سرویس ابری رسمی آسمانسرا (emami-asemansara.ir) یا فایل api/sync.php روی هاست خود سایت
+const REMOTE_PROD_SYNC_API = "https://emami-asemansara.ir/api/sync.php";
+
+// تشخیص اینکه آیا در دامنهٔ تولیدی (هاست اصلی آسمانسرا) هستیم یا محیط پیش‌نمایش/توسعه
+const isProductionDomain =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "emami-asemansara.ir" ||
+    window.location.hostname === "www.emami-asemansara.ir");
+
+// در محیط‌های کلود/پیش‌نمایش (مانند Google Cloud Run *.run.app، *.e2b.app، localhost، و نسخه PWA موبایل)
+// سرور ابری رسمی آسمانسرا مستقیماً فراخوانی می‌شود تا از خطای 403 پروکسی جلوگیری شود.
 const SYNC_API =
   (import.meta.env.VITE_SYNC_API as string | undefined) ||
-  (isArenaPreview ? "https://emami-asemansara.ir/api/sync.php" : "/api/sync.php");
+  (isProductionDomain ? "/api/sync.php" : REMOTE_PROD_SYNC_API);
 const SYNC_TOKEN =
   (import.meta.env.VITE_SYNC_TOKEN as string | undefined) ||
   "tlift-asemansara-1405";
@@ -232,6 +240,8 @@ function describeSyncError(e: unknown): string {
   if (raw.includes("مهلت اتصال")) return "سرور به‌موقع پاسخ نداد (تایم‌اوت). اینترنت کند است یا سرور همگام‌سازی در دسترس نیست.";
   if (s.includes("failed to fetch") || s.includes("networkerror") || s.includes("load failed") || s.includes("network request failed"))
     return "اتصال به سرور همگام‌سازی برقرار نشد؛ اینترنت، فیلترشکن یا در دسترس نبودن سرور را بررسی کنید.";
+  if (s.includes("403") || raw.includes("forbidden") || raw.includes("دسترسی غیرمجاز"))
+    return "دسترسی به سرور همگام‌سازی مسدود شد (HTTP 403) — تنظیمات فایروال یا اتصال اینترنت را بررسی کنید.";
   if (s.includes("404") || raw.includes("پیدا نشد"))
     return "فایل api/sync.php روی هاست پیدا نشد — نسخهٔ جدید خروجی سی‌پنل را آپلود کنید.";
   if (s.includes("401") || s.includes("invalid token"))
@@ -245,10 +255,22 @@ function describeSyncError(e: unknown): string {
 }
 
 // ── توابع سرویس PHP روی هاست (api/sync.php) ──
-const syncApiCandidates = () => {
-  const candidates = [SYNC_API];
-  if (typeof window !== "undefined" && !isArenaPreview) candidates.push("/sync.php");
-  return [...new Set(candidates)];
+const syncApiCandidates = (): string[] => {
+  const custom = import.meta.env.VITE_SYNC_API as string | undefined;
+  if (custom) return [custom];
+
+  if (isProductionDomain) {
+    // روی دامنهٔ اختصاصی cPanel، ابتدا مسیر محلی و سپس آدرس کامل آنلاین
+    return ["/api/sync.php", "/sync.php", REMOTE_PROD_SYNC_API];
+  }
+
+  // در تمامی محیط‌های پیش‌نمایش و کلود (مانند Google Cloud Run *.run.app، *.e2b.app، localhost، و نسخه موبایل):
+  // اولویت اول سرور ابری مستقیم https://emami-asemansara.ir/api/sync.php است تا بدون خطای پروکسی 403 مستقیماً ارتباط برقرار شود.
+  return [
+    REMOTE_PROD_SYNC_API,
+    "https://emami-asemansara.ir/sync.php",
+    "/api/sync.php",
+  ];
 };
 
 async function apiUpsert(key: string, data: unknown, updated_at: string) {
@@ -332,7 +354,7 @@ async function flushKey(key: string): Promise<boolean> {
     });
     return true;
   } catch (e: unknown) {
-    console.error("[cloudSync] flushKey failed:", e);
+    console.warn("[cloudSync] flushKey:", e);
     // در صف نگه‌دار و وضعیت را به آفلاین تغییر بده
     queue[key] = data;
     saveQueue(queue);
@@ -410,7 +432,7 @@ export async function pullAll(prefix = "tlift_"): Promise<boolean> {
     setState({ status: "online", lastSync: Date.now(), error: undefined });
     return true;
   } catch (e: unknown) {
-    console.error("[cloudSync] pullAll failed:", e);
+    console.warn("[cloudSync] pullAll:", e);
     setState({ status: "offline", error: describeSyncError(e) });
     return false;
   }
@@ -520,7 +542,7 @@ export async function syncNow(): Promise<{ success: boolean; message: string }> 
       };
     }
   } catch (err: unknown) {
-    console.error("[cloudSync] syncNow failed:", err);
+    console.warn("[cloudSync] syncNow:", err);
     setState({ status: "offline", error: describeSyncError(err) });
     return {
       success: false,

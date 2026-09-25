@@ -467,10 +467,10 @@ export default function App() {
           <button
             type="button"
             onClick={() => setAndroidModal(true)}
-            title="دانلود فایل نصبی APK و نسخه اندروید تلیفت"
+            title="نصب برنامه مستقل آسمانسرا روی گوشی"
             className="flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-emerald-700 shadow-sm transition"
           >
-            <Smartphone size={13} /> نصب اپلیکیشن
+            <Smartphone size={13} /> نصب برنامه آسمانسرا
           </button>
 
           <button

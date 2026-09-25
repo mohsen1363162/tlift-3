@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'ir.asemansara.tlift',
-  appName: 'تلیفت',
+  appName: 'آسمانسرا',
   webDir: 'dist',
   server: {
     url: 'https://emami-asemansara.ir',
