@@ -131,7 +131,14 @@ export default function NewContractWizard({
         start: c.start,
         end: c.end || "-",
         kind: "general",
+        address: b.address.trim(),
+        buildingName: b.name.trim(),
+        subscriptionNo: b.sub.trim(),
+        signDate: c.signDate,
+        monthlyServiceFee: Number(fin.amount.replace(/[^0-9]/g, "")) || 0,
         triangleKeyLocation: b.triangleKeyLocation.trim() || undefined,
+        additionalNotes: b.note.trim() || undefined,
+        devices,
       });
       notify("قرارداد با موفقیت ثبت شد");
       return;

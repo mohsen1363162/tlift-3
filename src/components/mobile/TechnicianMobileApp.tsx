@@ -203,6 +203,7 @@ export default function TechnicianMobileApp({
   };
 
   const [screen, setScreen] = useState<Screen>("home");
+  const [contractInfoView, setContractInfoView] = useState<"device" | "representatives" | "photos" | null>(null);
   const [triangleKeyQuery, setTriangleKeyQuery] = useState("");
   const [triangleKeyEditing, setTriangleKeyEditing] = useState<Contract | null>(null);
   const [triangleKeyLocation, setTriangleKeyLocation] = useState("");
@@ -1134,6 +1135,7 @@ export default function TechnicianMobileApp({
     if (!selected) return null;
     const c = selected.contract;
     const details = appStore.getContractDetails(c.id);
+    const projectPhotos = [...(c.photos || []), ...details.months.flatMap((month) => month.attachments || [])].filter((photo, index, all) => photo && all.indexOf(photo) === index);
     const debt = details.months.filter((m) => m.done && !m.paid).reduce((s, m) => s + m.amount, 0);
     const savedLoc = appStore.getContractGeoLocation(c.id);
     const targetLat = savedLoc?.latitude ?? 36.2688;
@@ -1507,7 +1509,7 @@ export default function TechnicianMobileApp({
           )}
         </div>
         <div className="-mt-7 flex items-end justify-around px-2 relative z-10">
-          {round(ImageIcon, "تصاویر", "bg-gray-500", () => notify("گالری تصاویر دستگاه"))}
+          {round(ImageIcon, "تصاویر", "bg-gray-500", () => setContractInfoView("photos"))}
           {round(Phone, "تماس", "bg-sky-600", () => {
             const phone = c.coordinatorPhone || c.phone;
             if (phone) window.location.href = `tel:${phone}`;
@@ -1525,11 +1527,12 @@ export default function TechnicianMobileApp({
           {c.address || "قزوین"} {c.locationStatus ? `— ${c.locationStatus}` : ""}
         </div>
 
-        <div className="grid grid-cols-3 gap-2 p-3">
+        <div className="grid grid-cols-4 gap-2 p-3">
           {[
             { l: "ثبت موقعیت", i: MapPin, run: () => registerContractPosition(c) },
-            { l: "اطلاعات دستگاه", i: Info, run: () => notify("آسانسور کششی ۶ توقف - ۶۳۰ کیلوگرم") },
-            { l: "نماینده‌ها", i: Users, run: () => notify(`${c.manager}${c.coordinator ? " / " + c.coordinator : ""}`) },
+            { l: "اطلاعات دستگاه", i: Info, run: () => setContractInfoView("device") },
+            { l: "نماینده‌ها", i: Users, run: () => setContractInfoView("representatives") },
+            { l: "عکس‌ها", i: ImageIcon, run: () => setContractInfoView("photos") },
           ].map((b) => (
             <button key={b.l} type="button" onClick={b.run} className="flex flex-col items-center gap-1 rounded-xl bg-white py-3 shadow-sm">
               <b.i size={20} className="text-violet-600" />
@@ -1549,7 +1552,9 @@ export default function TechnicianMobileApp({
             ["تلفن", c.phone || "-"],
             ["بدهی مشتری", `${fa(debt)} ریال`],
             ["مبلغ ماهیانه", `${fa(selected.month.amount)} ریال`],
-            ["پیوست‌ها", "—"],
+            ["پیوست‌ها", projectPhotos.length ? `${fa(projectPhotos.length)} فایل / عکس` : "—"],
+            ["توضیحات اضافی", c.additionalNotes || "ثبت نشده"],
+            ["محل کلید سه‌گوش", c.triangleKeyLocation || "ثبت نشده"],
           ].map(([k, v]) => (
             <div key={k} className="flex items-center justify-between border-b px-3 py-2.5 text-[12.5px] last:border-0">
               <span className="text-gray-500">{k}</span>
@@ -1557,6 +1562,22 @@ export default function TechnicianMobileApp({
             </div>
           ))}
         </div>
+
+        {contractInfoView && (
+          <div className="fixed inset-0 z-[65] mx-auto flex max-w-[480px] flex-col bg-slate-100">
+            {header(contractInfoView === "device" ? "اطلاعات دستگاه" : contractInfoView === "representatives" ? "نماینده‌ها و مسئولین" : "عکس‌های پروژه", () => setContractInfoView(null))}
+            <div className="flex-1 overflow-y-auto p-3">
+              {contractInfoView === "device" && (
+                <div className="space-y-3">
+                  {(c.devices || []).map((device, index) => <div key={`${device.serial}-${index}`} className="overflow-hidden rounded-2xl border bg-white shadow-sm"><div className="bg-violet-600 p-3 text-[13px] font-bold text-white">{device.name || `دستگاه ${fa(index + 1)}`}</div><div>{[["نوع دستگاه", device.kind === "asansor" ? "آسانسور" : device.kind === "pele" ? "پله برقی" : "رمپ"],["نوع / مدل", device.type],["کاربری", device.usage],["تعداد توقف", device.stops],["تعداد طبقات", device.floors],["ظرفیت نفر", device.personCap],["ظرفیت وزن", device.weightCap ? `${device.weightCap} کیلوگرم` : ""],["نوع درب", device.innerDoor ? "دارای درب کابین" : "بدون درب کابین"],["سازنده", device.maker],["شماره سریال", device.serial],["شماره ملی دستگاه", device.nationalNo],["تاریخ گواهی", device.certDate],["پایان گارانتی", device.warrantyDate]].map(([key,value]) => <div key={key} className="flex justify-between gap-3 border-b px-3 py-2.5 text-[11.5px] last:border-0"><span className="text-gray-500">{key}</span><b className="text-left text-gray-800">{value || "ثبت نشده"}</b></div>)}</div></div>)}
+                  {(!c.devices || c.devices.length === 0) && <div className="rounded-2xl border border-dashed bg-white py-12 text-center text-[12px] text-gray-400">مشخصات دستگاه برای این قرارداد ثبت نشده است.</div>}
+                </div>
+              )}
+              {contractInfoView === "representatives" && <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">{[["مدیر / کارفرما", c.manager],["شماره تماس", c.phone],["مسئول هماهنگی", c.coordinator],["شماره مسئول هماهنگی", c.coordinatorPhone]].map(([key,value]) => <div key={key} className="flex justify-between gap-3 border-b p-3 text-[12px] last:border-0"><span className="text-gray-500">{key}</span><b className="text-left text-gray-800">{value || "ثبت نشده"}</b></div>)}</div>}
+              {contractInfoView === "photos" && <div className="grid grid-cols-2 gap-2">{projectPhotos.map((photo, index) => <a key={`${photo.slice(0,30)}-${index}`} href={photo} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border bg-white shadow-sm"><img src={photo} alt={`عکس پروژه ${index + 1}`} className="aspect-square w-full object-cover"/><div className="p-2 text-center text-[10px] text-gray-600">عکس {fa(index + 1)}</div></a>)}{projectPhotos.length === 0 && <div className="col-span-2 rounded-2xl border border-dashed bg-white py-12 text-center text-[12px] text-gray-400">هنوز عکسی برای این پروژه یا سرویس‌های آن ثبت نشده است.</div>}</div>}
+            </div>
+          </div>
+        )}
       </>
     );
   };
