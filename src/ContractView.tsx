@@ -51,6 +51,7 @@ import ServiceReportView from "./components/ServiceReportView";
 import { ContractPaymentsView } from "./components/ContractPaymentsView";
 import ContractBreakdownsView from "./components/ContractBreakdownsView";
 import ContractServicesListView from "./components/ContractServicesListView";
+import { printServiceMaintenanceContract } from "./utils/printServiceContract";
 import BreakdownModal from "./components/BreakdownModal";
 import { Field, inputCls, SearchSelect, DatePicker } from "./ui";
 import { appStore, useContractDetails, MonthService, PaymentRecord, Invoice } from "./store";
@@ -175,7 +176,7 @@ export default function ContractView({
   ];
 
   const actions = [
-    ["چاپ تاریخچه قرارداد", Printer],
+    ["چاپ قرارداد سرویس و نگهداری", Printer],
     ["چاپ کاردکس قرارداد", Printer],
     ["چاپ فاکتور سرویس ها", Printer],
     ["پرداخت ها", CreditCard],
@@ -402,6 +403,7 @@ export default function ContractView({
       >
         {actions.map(([label, I]) => {
           const isPayments = label === "پرداخت ها";
+          const isServiceContractPrint = label === "چاپ قرارداد سرویس و نگهداری";
           return (
             <div key={label} className="flex items-center gap-1">
               <button
@@ -409,6 +411,8 @@ export default function ContractView({
                 onClick={() => {
                   if (isPayments) {
                     setSubView("payments");
+                  } else if (isServiceContractPrint) {
+                    if (!printServiceMaintenanceContract(contract)) notify("برای چاپ، اجازه بازشدن پنجره جدید را فعال کنید");
                   } else {
                     notify(label);
                   }
