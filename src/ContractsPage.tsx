@@ -15,7 +15,6 @@ import {
   AlertTriangle,
   Pin,
   PinOff,
-  CalendarCheck,
 } from "lucide-react";
 import type { Theme } from "./theme";
 import { Contract } from "./data";
@@ -472,9 +471,8 @@ export default function ContractsPage({
                     if (col.key === "serviceDay") {
                       return (
                         <td key={col.key} className="whitespace-nowrap px-3 py-3 font-medium">
-                          <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-[11.5px] font-bold text-sky-400">
-                            <CalendarCheck size={13} className="text-sky-400 shrink-0" />
-                            <span>{formatContractServiceDay(c)}</span>
+                          <span className="text-[13px] font-bold text-sky-500">
+                            {fa(getContractPlannedDay(c))}
                           </span>
                         </td>
                       );
