@@ -38,13 +38,14 @@ import ContractRibbonBar from "./components/ContractRibbonBar";
 import WelcomeBanner from "./components/WelcomeBanner";
 import SyncIndicator from "./components/SyncIndicator";
 import AndroidAppModal from "./components/AndroidAppModal";
+// ثبت قرارداد مسیر حیاتی برنامه است و برای جلوگیری از خطای بارگذاری chunk قدیمی PWA، مستقیم بارگذاری می‌شود.
+import NewContractWizard from "./NewContractWizard";
 
 // صفحه‌های سنگین به‌صورت تنبل (lazy) لود می‌شوند تا باندل اولیهٔ اپ کوچک بماند
 const StaffPage = lazy(() => import("./StaffPage"));
 const PartsPage = lazy(() => import("./PartsPage"));
 const CustomersPage = lazy(() => import("./CustomersPage"));
 const ContractsPage = lazy(() => import("./ContractsPage"));
-const NewContractWizard = lazy(() => import("./NewContractWizard"));
 const ContractView = lazy(() => import("./ContractView"));
 const CustomerReportsPage = lazy(() => import("./CustomerReportsPage"));
 const CsvUploadPage = lazy(() => import("./CsvUploadPage"));
