@@ -273,6 +273,8 @@ export type Contract = {
   cleaningDates?: string[];
   /** تاریخچه تعویض روغن موتور/گیربکس به تاریخ شمسی. */
   motorOilChangeDates?: string[];
+  maintenanceLastEditedBy?: string;
+  maintenanceLastEditedAt?: number;
 };
 
 export const initialContracts: Contract[] = [];

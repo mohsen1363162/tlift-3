@@ -4,7 +4,6 @@ import { Contract, Customer, Staff, initialContracts, initialCustomers, initialS
 import type { BuildingCsvRow } from "./utils/buildingsCsv";
 import { getContractServiceDay } from "./utils/serviceScheduleDays";
 import { getContractOfficialFee } from "./data/contractServiceFees";
-import bootstrapData from "./data/tlift-bootstrap.json";
 import {
   RAW_CSV_DATA,
   RAW_CUSTOMERS_CSV_DATA,
@@ -234,22 +233,28 @@ function saveStorage<T>(key: string, data: T) {
 
 // اگر برنامه روی مرورگر/پیش‌نمایش تازه اجرا شود و دیتابیس محلی خالی باشد،
 // نسخه پایدار ثبت‌شده در مخزن خصوصی بازیابی و برای سرور نیز صف‌بندی می‌شود.
-function restoreBootstrapWhenEmpty() {
+async function restoreBootstrapWhenEmpty() {
   try {
     const localContracts = JSON.parse(localStorage.getItem("tlift_contracts") || "[]");
     const localCustomers = JSON.parse(localStorage.getItem("tlift_customers") || "[]");
-    if (Array.isArray(localContracts) && localContracts.length > 0 && Array.isArray(localCustomers) && localCustomers.length > 0) return;
-    const entries = (bootstrapData as { entries?: Record<string, unknown> }).entries || {};
+    if (Array.isArray(localContracts) && localContracts.length > 0 && Array.isArray(localCustomers) && localCustomers.length > 0) return false;
+    // فایل بزرگ اطلاعات از باندل اصلی جدا شده و فقط در نصب واقعاً خالی دریافت می‌شود.
+    const response = await fetch("/data/tlift-bootstrap.json", { cache: "force-cache" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const bootstrapData = await response.json() as { entries?: Record<string, unknown> };
+    const entries = bootstrapData.entries || {};
     Object.entries(entries).forEach(([key, value]) => {
       writeLocalStorage(key, value);
       pushKey(key, value);
     });
     localStorage.setItem("tlift_bootstrap_restored_v1", new Date().toISOString());
+    return Object.keys(entries).length > 0;
   } catch (error) {
-    console.warn("Unable to restore bundled T-Lift backup", error);
+    console.warn("Unable to restore external T-Lift backup", error);
+    return false;
   }
 }
-restoreBootstrapWhenEmpty();
+void restoreBootstrapWhenEmpty().then((restored) => { if (restored) window.location.reload(); });
 
 // اعمال مبالغ واقعی و مصوب قراردادها از لیست رسمی مدیریت به حافظه مرورگر
 function syncOfficialContractFees() {

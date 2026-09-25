@@ -13,6 +13,7 @@
 define('SYNC_TOKEN', 'tlift-asemansara-1405'); // ← این رمز را عوض کنید
 define('DATA_DIR', __DIR__ . '/api/sync_data');
 define('MAX_BODY_BYTES', 8 * 1024 * 1024);
+define('BACKUP_DIR', __DIR__ . '/api/sync_data' . '/backups');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -36,8 +37,22 @@ if (!hash_equals(SYNC_TOKEN, $token)) {
     exit;
 }
 
-if (!is_dir(DATA_DIR)) {
-    @mkdir(DATA_DIR, 0755, true);
+if (!is_dir(DATA_DIR)) { @mkdir(DATA_DIR, 0755, true); }
+if (!is_dir(BACKUP_DIR)) { @mkdir(BACKUP_DIR, 0755, true); }
+
+function backup_current_file($key, $file) {
+    if (!is_file($file)) return;
+    $dayDir = BACKUP_DIR . '/' . date('Y-m-d');
+    if (!is_dir($dayDir)) @mkdir($dayDir, 0755, true);
+    $backup = $dayDir . '/' . $key . '.json';
+    if (!is_file($backup)) @copy($file, $backup);
+    // نگهداری ۳۰ روز آخر
+    foreach (glob(BACKUP_DIR . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
+        if (basename($dir) < date('Y-m-d', strtotime('-30 days'))) {
+            foreach (glob($dir . '/*') ?: [] as $old) @unlink($old);
+            @rmdir($dir);
+        }
+    }
 }
 
 function file_for($key) {
@@ -51,6 +66,19 @@ $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'GET') {
     $key = isset($_GET['key']) ? (string)$_GET['key'] : '';
     $prefix = isset($_GET['prefix']) ? (string)$_GET['prefix'] : '';
+    $action = isset($_GET['action']) ? (string)$_GET['action'] : '';
+    if ($action === 'backups') {
+        $dates = [];
+        foreach (glob(BACKUP_DIR . '/*', GLOB_ONLYDIR) ?: [] as $dir) $dates[] = basename($dir);
+        rsort($dates); echo json_encode($dates); exit;
+    }
+    if ($action === 'backup' && $key !== '' && isset($_GET['date'])) {
+        $date = (string)$_GET['date'];
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) { http_response_code(400); echo json_encode(['error'=>'bad date']); exit; }
+        $bf = BACKUP_DIR . '/' . $date . '/' . basename($key) . '.json';
+        if (is_file($bf)) readfile($bf); else { http_response_code(404); echo json_encode(['error'=>'backup not found']); }
+        exit;
+    }
 
     if ($key !== '') {
         $f = file_for($key);
@@ -93,6 +121,19 @@ if ($method === 'POST') {
         echo json_encode(['error' => 'bad key']);
         exit;
     }
+
+    // کنترل همزمانی: دستگاه قدیمی اجازه ندارد داده جدیدتر سرور را بی‌صدا بازنویسی کند.
+    if (is_file($f) && !empty($body['base_updated_at'])) {
+        $current = json_decode((string)file_get_contents($f), true);
+        $serverUpdated = is_array($current) ? ($current['updated_at'] ?? '') : '';
+        if ($serverUpdated !== '' && strcmp($serverUpdated, (string)$body['base_updated_at']) > 0) {
+            http_response_code(409);
+            echo json_encode(['error' => 'conflict', 'server' => $current], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+
+    backup_current_file($body['key'], $f);
 
     $payload = json_encode([
         'key' => $body['key'],

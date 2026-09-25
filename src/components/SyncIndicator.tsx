@@ -28,6 +28,7 @@ export function useSyncState() {
     offlineServicesCount: 0,
     isManualOffline: false,
     intervalMinutes: getSyncInterval(),
+    conflicts: 0,
   });
   useEffect(() => subscribeSync(setS), []);
   return s;
@@ -223,6 +224,16 @@ export default function SyncIndicator({
             </span>
           </div>
 
+          {s.pending > 0 && (
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/40 p-2 text-blue-800 dark:text-blue-300 text-[11px] flex items-center justify-between">
+              <span>تغییرات ارسال‌نشده:</span><span className="font-bold">{s.pending} مورد</span>
+            </div>
+          )}
+          {s.conflicts > 0 && (
+            <div className="rounded-lg bg-red-50 dark:bg-red-950/40 p-2 text-red-800 dark:text-red-300 text-[11px]">
+              {s.conflicts} تداخل بین دستگاه‌ها شناسایی شد؛ هیچ داده‌ای بازنویسی نشده است.
+            </div>
+          )}
           {s.offlineServicesCount > 0 && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 p-2 text-amber-800 dark:text-amber-300 text-[11px] flex items-center justify-between">
               <span>سرویس‌های در صف آفلاین:</span>

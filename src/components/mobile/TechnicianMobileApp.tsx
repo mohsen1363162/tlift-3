@@ -3085,7 +3085,7 @@ export default function TechnicianMobileApp({
     ).slice(0, 40);
     const saveKeyLocation = () => {
       if (!triangleKeyEditing) return;
-      appStore.updateContract({ ...triangleKeyEditing, triangleKeyLocation: triangleKeyLocation.trim() || undefined, cleaningDates: triangleCleaningDates, motorOilChangeDates: triangleOilDates });
+      appStore.updateContract({ ...triangleKeyEditing, triangleKeyLocation: triangleKeyLocation.trim() || undefined, cleaningDates: triangleCleaningDates, motorOilChangeDates: triangleOilDates, maintenanceLastEditedBy: technician.name, maintenanceLastEditedAt: Date.now() });
       setTriangleKeyEditing(null);
       setTriangleKeyLocation("");
       syncNow();

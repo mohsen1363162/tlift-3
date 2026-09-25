@@ -25,6 +25,7 @@ export type SyncState = {
   offlineServicesCount: number;
   isManualOffline: boolean;
   intervalMinutes: number; // 0 = دستی (بدون چک دوره‌ای)، ۲، ۵، ۱۰، ۱۵، ۳۰، ۶۰ دقیقه
+  conflicts: number;
   error?: string;
 };
 
@@ -36,6 +37,8 @@ const QUEUE_KEY = "tlift_offline_queue_v2";
 const OFFLINE_SERVICES_KEY = "tlift_offline_services_v1";
 const MANUAL_OFFLINE_KEY = "tlift_manual_offline_v1";
 const SYNC_INTERVAL_KEY = "tlift_sync_interval_minutes_v1";
+const LAST_SYNC_KEY = "tlift_last_successful_sync_v1";
+const CONFLICTS_KEY = "tlift_sync_conflicts_v1";
 const DEFAULT_INTERVAL_MINUTES = 5; // پیش‌فرض: هر ۵ دقیقه
 
 // ── بک‌اند همگام‌سازی ──
@@ -129,14 +132,18 @@ const queue: Record<string, unknown> = loadQueue();
 const timers: Record<string, ReturnType<typeof setTimeout>> = {};
 let applyingRemote = false;
 let periodicTimer: ReturnType<typeof setInterval> | null = null;
+const loadConflicts = (): Record<string, unknown> => {
+  try { return JSON.parse(localStorage.getItem(CONFLICTS_KEY) || "{}"); } catch { return {}; }
+};
 
 let state: SyncState = {
   status: typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "idle",
-  lastSync: null,
+  lastSync: Number(localStorage.getItem(LAST_SYNC_KEY) || 0) || null,
   pending: Object.keys(queue).length,
   offlineServicesCount: getOfflineServices().length,
   isManualOffline: getInitialManualOffline(),
   intervalMinutes: getSyncInterval(),
+  conflicts: Object.keys(loadConflicts()).length,
 };
 
 const listeners = new Set<Listener>();
@@ -279,8 +286,16 @@ async function apiUpsert(key: string, data: unknown, updated_at: string) {
     try {
       const res = await withTimeout(fetch(`${endpoint}?token=${encodeURIComponent(SYNC_TOKEN)}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, data, updated_at }),
+        body: JSON.stringify({ key, data, updated_at, base_updated_at: loadMeta()[key] || null }),
       }));
+      if (res.status === 409) {
+        const conflict = await res.json().catch(() => ({}));
+        const conflicts = loadConflicts();
+        conflicts[key] = { local: data, server: conflict.server, detectedAt: Date.now() };
+        localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts));
+        setState({ conflicts: Object.keys(conflicts).length });
+        throw new Error("تداخل اطلاعات: این رکورد در دستگاه دیگری تغییر کرده و برای بررسی نگهداری شد.");
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return;
     } catch (error) { lastError = error; }
@@ -346,9 +361,11 @@ async function flushKey(key: string): Promise<boolean> {
     meta[key] = updated_at;
     saveMeta(meta);
 
+    const syncedAt = Date.now();
+    localStorage.setItem(LAST_SYNC_KEY, String(syncedAt));
     setState({
       status: "online",
-      lastSync: Date.now(),
+      lastSync: syncedAt,
       pending: Object.keys(queue).length,
       error: undefined,
     });
@@ -429,7 +446,9 @@ export async function pullAll(prefix = "tlift_"): Promise<boolean> {
     }
 
     rows.forEach((r) => applyRemote(r.key, r.data, r.updated_at));
-    setState({ status: "online", lastSync: Date.now(), error: undefined });
+    const syncedAt = Date.now();
+    localStorage.setItem(LAST_SYNC_KEY, String(syncedAt));
+    setState({ status: "online", lastSync: syncedAt, error: undefined });
     return true;
   } catch (e: unknown) {
     console.warn("[cloudSync] pullAll:", e);
@@ -523,9 +542,11 @@ export async function syncNow(): Promise<{ success: boolean; message: string }> 
 
     if (pushed && pulled) {
       clearOfflineServices();
+      const syncedAt = Date.now();
+      localStorage.setItem(LAST_SYNC_KEY, String(syncedAt));
       setState({
         status: "online",
-        lastSync: Date.now(),
+        lastSync: syncedAt,
         pending: 0,
         offlineServicesCount: 0,
         error: undefined,

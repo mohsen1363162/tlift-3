@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { Theme } from "../theme";
 import { downloadFullBackup, restoreFullBackup } from "../utils/fullBackup";
+import { getContractsServerBackup, listServerBackupDates } from "../utils/serverBackups";
+import { appStore, useContracts } from "../store";
 
 interface CpanelSettingsPageProps {
   t: Theme;
@@ -31,6 +33,10 @@ export default function CpanelSettingsPage({
   const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [backupStatus, setBackupStatus] = useState("");
+  const contracts = useContracts();
+  const [serverBackupDates, setServerBackupDates] = useState<string[]>([]);
+  const [selectedBackupDate, setSelectedBackupDate] = useState("");
+  const [selectedContractId, setSelectedContractId] = useState("");
 
   const handleDataBackup = () => {
     const count = downloadFullBackup();
@@ -47,6 +53,26 @@ export default function CpanelSettingsPage({
     } catch (error) {
       setBackupStatus(error instanceof Error ? error.message : "فایل پشتیبان معتبر نیست.");
     }
+  };
+
+  const loadServerBackups = async () => {
+    try {
+      const dates = await listServerBackupDates();
+      setServerBackupDates(dates);
+      setSelectedBackupDate(dates[0] || "");
+      onShowToast(`${dates.length.toLocaleString("fa-IR")} نسخه روزانه پیدا شد`);
+    } catch { onShowToast("دریافت فهرست پشتیبان‌های سرور ممکن نشد"); }
+  };
+
+  const restoreOneContract = async () => {
+    if (!selectedBackupDate || !selectedContractId) return onShowToast("تاریخ و قرارداد را انتخاب کنید");
+    try {
+      const backupContracts = await getContractsServerBackup(selectedBackupDate);
+      const restored = backupContracts.find((item) => String(item.id) === selectedContractId);
+      if (!restored) return onShowToast("این قرارداد در نسخه انتخابی وجود ندارد");
+      appStore.updateContract(restored);
+      onShowToast(`قرارداد ${restored.no} بدون تغییر سایر قراردادها بازیابی شد`);
+    } catch { onShowToast("بازیابی قرارداد از سرور انجام نشد"); }
   };
 
   // تابع دانلود تضمینی نسخه کامل
@@ -162,6 +188,17 @@ export default function CpanelSettingsPage({
           </div>
         </div>
         {backupStatus && <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">{backupStatus}</div>}
+      </div>
+
+      <div className={`mb-6 rounded-2xl border p-5 shadow-sm ${t.card} ${t.border}`}>
+        <h2 className={`flex items-center gap-2 text-base font-bold ${t.text}`}><DatabaseBackup size={21} className="text-blue-500"/> پشتیبان روزانه سرور و بازیابی یک قرارداد</h2>
+        <p className={`mt-1 text-xs ${t.sub}`}>سرور پیش از هر تغییر، روزانه نسخه‌ای نگه می‌دارد. بازیابی زیر فقط همان قرارداد را برمی‌گرداند و سایر اطلاعات دست‌نخورده می‌ماند.</p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={loadServerBackups} className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><RefreshCw size={14} className="ml-1 inline"/> دریافت نسخه‌های سرور</button>
+          <select value={selectedBackupDate} onChange={(e) => setSelectedBackupDate(e.target.value)} className={`rounded-xl border px-3 py-2.5 text-xs ${t.input} ${t.border}`}><option value="">انتخاب تاریخ پشتیبان</option>{serverBackupDates.map((date) => <option key={date} value={date}>{date}</option>)}</select>
+          <select value={selectedContractId} onChange={(e) => setSelectedContractId(e.target.value)} className={`min-w-52 rounded-xl border px-3 py-2.5 text-xs ${t.input} ${t.border}`}><option value="">انتخاب قرارداد</option>{contracts.map((contract) => <option key={contract.id} value={contract.id}>{contract.building.replace(/^\*\s*/, "")} — {contract.no}</option>)}</select>
+          <button type="button" onClick={restoreOneContract} className="rounded-xl border border-amber-500 px-4 py-2.5 text-xs font-bold text-amber-600">بازیابی همین قرارداد</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

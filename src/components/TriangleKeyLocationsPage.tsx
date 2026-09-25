@@ -3,6 +3,7 @@ import { KeyRound, Printer, Search, Save, X } from "lucide-react";
 import type { Theme } from "../theme";
 import { appStore, useContracts } from "../store";
 import type { Contract } from "../data";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function TriangleKeyLocationsPage({
   t,
@@ -12,6 +13,9 @@ export default function TriangleKeyLocationsPage({
   onShowToast: (message: string) => void;
 }) {
   const contracts = useContracts();
+  const { currentUserInfo } = useAuth();
+  const canEdit = currentUserInfo?.role === "admin" || currentUserInfo?.role === "technician";
+  const canPrint = currentUserInfo?.role === "admin" || currentUserInfo?.role === "staff";
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Contract | null>(null);
   const [location, setLocation] = useState("");
@@ -68,6 +72,8 @@ export default function TriangleKeyLocationsPage({
       triangleKeyLocation: location.trim() || undefined,
       cleaningDates,
       motorOilChangeDates: oilDates,
+      maintenanceLastEditedBy: currentUserInfo?.name || "کاربر سیستم",
+      maintenanceLastEditedAt: Date.now(),
     });
     setEditing(null);
     setLocation("");
@@ -85,9 +91,9 @@ export default function TriangleKeyLocationsPage({
             <h1 className={`text-base font-bold ${t.text}`}>محل کلید سه‌گوش</h1>
             <p className={`mt-1 text-xs ${t.sub}`}>دسترسی سریع به محل کلید نجات اضطراری ساختمان‌ها</p>
           </div>
-          <button type="button" onClick={printLocations} className="flex items-center gap-2 rounded-lg bg-slate-700 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800">
+          {canPrint && <button type="button" onClick={printLocations} className="flex items-center gap-2 rounded-lg bg-slate-700 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800">
             <Printer size={16} /> چاپ جدول
-          </button>
+          </button>}
         </div>
 
         <div className={`flex items-center gap-2 rounded-xl border px-3 ${t.input} ${t.border}`}>
@@ -120,15 +126,16 @@ export default function TriangleKeyLocationsPage({
                     <div className={`font-semibold ${t.text}`}>{contract.building.replace(/^\*\s*/, "")}</div>
                     <div className={`mt-1 text-xs ${t.sub}`}>{contract.manager} · قرارداد {contract.no}</div>
                   </div>
-                  <button type="button" onClick={() => startEdit(contract)} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700">
-                    {contract.triangleKeyLocation ? "ویرایش محل کلید" : "ثبت محل کلید"}
-                  </button>
+                  {canEdit && <button type="button" onClick={() => startEdit(contract)} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700">
+                    {contract.triangleKeyLocation ? "ویرایش اطلاعات نگهداری" : "ثبت اطلاعات نگهداری"}
+                  </button>}
                 </div>
                 <div className="mt-3 grid gap-2 md:grid-cols-3">
                   <div className={`rounded-lg border px-3 py-3 text-sm ${t.border} ${contract.triangleKeyLocation ? t.text : t.sub}`}><span className="mb-1 block text-xs font-medium text-red-500">محل کلید سه‌گوش</span>{contract.triangleKeyLocation || "ثبت نشده"}</div>
                   <div className={`rounded-lg border px-3 py-3 text-sm ${t.border} ${(contract.cleaningDates || []).length ? t.text : t.sub}`}><span className="mb-1 block text-xs font-medium text-amber-600">آخرین نظافت</span>{lastDate(contract.cleaningDates)}</div>
                   <div className={`rounded-lg border px-3 py-3 text-sm ${t.border} ${(contract.motorOilChangeDates || []).length ? t.text : t.sub}`}><span className="mb-1 block text-xs font-medium text-blue-600">آخرین تعویض روغن موتور</span>{lastDate(contract.motorOilChangeDates)}</div>
                 </div>
+                {contract.maintenanceLastEditedAt && <div className={`mt-2 text-[10px] ${t.sub}`}>آخرین ویرایش: {contract.maintenanceLastEditedBy || "کاربر سیستم"} — {new Date(contract.maintenanceLastEditedAt).toLocaleString("fa-IR")}</div>}
               </div>
             ))}
           </div>
