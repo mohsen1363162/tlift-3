@@ -61,7 +61,7 @@ const MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "�
 
 export default function ContractView({
   t,
-  contract,
+  contract: initialContract,
   initialSubView = "overview",
   onOpenServiceReport,
 }: {
@@ -70,11 +70,26 @@ export default function ContractView({
   initialSubView?: "overview" | "payments" | "breakdowns" | "services";
   onOpenServiceReport?: (monthService: MonthService, contract: Contract) => void;
 }) {
+  const [contract, setContract] = useState<Contract>(initialContract);
+  const [contractEditorMode, setContractEditorMode] = useState<"edit" | "renew" | "representatives" | null>(null);
+  const [contractDraft, setContractDraft] = useState<Contract>(initialContract);
   const [toast, setToast] = useState<string | null>(null);
   const [showServiceContractPreview, setShowServiceContractPreview] = useState(false);
   const notify = (m: string) => {
     setToast(m);
     setTimeout(() => setToast(null), 2500);
+  };
+  useEffect(() => { setContract(initialContract); }, [initialContract]);
+  const openContractEditor = (mode: "edit" | "renew" | "representatives") => {
+    setContractDraft({ ...contract });
+    setContractEditorMode(mode);
+  };
+  const setContractField = (key: keyof Contract, value: string | number) => setContractDraft((current) => ({ ...current, [key]: value }));
+  const saveContractEditor = () => {
+    const saved = contractEditorMode === "renew" ? appStore.renewContract(contractDraft) : (appStore.updateContract(contractDraft), contractDraft);
+    setContract(saved);
+    setContractEditorMode(null);
+    notify(contractEditorMode === "renew" ? "قرارداد تمدید و دوره جدید سرویس ایجاد شد" : "اطلاعات قرارداد ذخیره شد");
   };
 
   const [subView, setSubView] = useState<"overview" | "payments" | "breakdowns" | "services">(initialSubView);
@@ -368,7 +383,7 @@ export default function ContractView({
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => notify("تمدید قرارداد")}
+          onClick={() => openContractEditor("renew")}
           className="flex items-center gap-1 rounded bg-violet-500 px-4 py-1.5 text-[12.5px] text-white hover:bg-violet-600"
         >
           <ChevronDown size={13} /> تمدید قرارداد
@@ -405,6 +420,8 @@ export default function ContractView({
         {actions.map(([label, I]) => {
           const isPayments = label === "پرداخت ها";
           const isServiceContractPrint = label === "چاپ قرارداد سرویس و نگهداری";
+          const isEditContract = label === "ویرایش قرارداد";
+          const isEditRepresentatives = label === "ویرایش نمایندگان";
           return (
             <div key={label} className="flex items-center gap-1">
               <button
@@ -414,6 +431,10 @@ export default function ContractView({
                     setSubView("payments");
                   } else if (isServiceContractPrint) {
                     setShowServiceContractPreview(true);
+                  } else if (isEditContract) {
+                    openContractEditor("edit");
+                  } else if (isEditRepresentatives) {
+                    openContractEditor("representatives");
                   } else {
                     notify(label);
                   }
@@ -1622,6 +1643,44 @@ export default function ContractView({
           setIsBreakdownModalOpen(false);
         }}
       />
+
+      {contractEditorMode && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/65 p-4" onClick={() => setContractEditorMode(null)}>
+          <div dir="rtl" className={`max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl border p-5 shadow-2xl ${t.panel} ${t.border}`} onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div><h2 className={`text-base font-bold ${t.text}`}>{contractEditorMode === "renew" ? "تمدید قرارداد" : contractEditorMode === "representatives" ? "ویرایش مدیر ساختمان و نمایندگان" : "ویرایش قرارداد"}</h2><p className={`mt-1 text-xs ${t.sub}`}>{contract.building.replace(/^\*\s*/, "")} — قرارداد {contract.no}</p></div>
+              <button type="button" onClick={() => setContractEditorMode(null)} className={`rounded-lg p-2 ${t.hover}`}><X size={18}/></button>
+            </div>
+            {contractEditorMode === "renew" && <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 text-xs leading-6 text-violet-400">با ذخیره تمدید، قرارداد قبلی در تاریخچه حفظ می‌شود و ۱۲ ردیف سرویس انجام‌نشده برای دوره جدید ایجاد خواهد شد.</div>}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {contractEditorMode === "edit" && <>
+                <Field label="شماره قرارداد"><input value={contractDraft.no} onChange={(e) => setContractField("no", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="نام ساختمان"><input value={contractDraft.building.replace(/^\*\s*/, "")} onChange={(e) => setContractField("building", `* ${e.target.value}`)} className={inputCls(t)}/></Field>
+                <Field label="شماره اشتراک"><input value={contractDraft.subscriptionNo || ""} onChange={(e) => setContractField("subscriptionNo", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="منطقه"><input value={contractDraft.zone || ""} onChange={(e) => setContractField("zone", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="تاریخ شروع"><input value={contractDraft.start || ""} onChange={(e) => setContractField("start", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="تاریخ پایان"><input value={contractDraft.end || ""} onChange={(e) => setContractField("end", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="مبلغ ماهیانه (ریال)"><input inputMode="numeric" value={contractDraft.monthlyServiceFee || ""} onChange={(e) => setContractField("monthlyServiceFee", Number(e.target.value.replace(/\D/g, "")))} className={inputCls(t)}/></Field>
+                <Field label="محل کلید سه‌گوش"><input value={contractDraft.triangleKeyLocation || ""} onChange={(e) => setContractField("triangleKeyLocation", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="آدرس ساختمان" className="sm:col-span-2"><textarea value={contractDraft.address || ""} onChange={(e) => setContractField("address", e.target.value)} className={`min-h-20 w-full rounded border p-2 text-sm ${t.input}`}/></Field>
+                <Field label="توضیحات اضافی" className="sm:col-span-2"><textarea value={contractDraft.additionalNotes || ""} onChange={(e) => setContractField("additionalNotes", e.target.value)} className={`min-h-20 w-full rounded border p-2 text-sm ${t.input}`}/></Field>
+              </>}
+              {contractEditorMode === "renew" && <>
+                <Field label="تاریخ شروع دوره جدید"><input value={contractDraft.start || ""} onChange={(e) => setContractField("start", e.target.value)} placeholder="۱۴۰۶/۰۱/۰۱" className={inputCls(t)}/></Field>
+                <Field label="تاریخ پایان دوره جدید"><input value={contractDraft.end || ""} onChange={(e) => setContractField("end", e.target.value)} placeholder="۱۴۰۶/۱۲/۲۹" className={inputCls(t)}/></Field>
+                <Field label="مبلغ ماهیانه جدید (ریال)" className="sm:col-span-2"><input inputMode="numeric" value={contractDraft.monthlyServiceFee || ""} onChange={(e) => setContractField("monthlyServiceFee", Number(e.target.value.replace(/\D/g, "")))} className={inputCls(t)}/></Field>
+              </>}
+              {contractEditorMode === "representatives" && <>
+                <Field label="مدیر ساختمان / کارفرما"><input value={contractDraft.manager || ""} onChange={(e) => setContractField("manager", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="شماره همراه مدیر"><input dir="ltr" value={contractDraft.phone || ""} onChange={(e) => setContractField("phone", e.target.value.replace(/\D/g, ""))} className={inputCls(t)}/></Field>
+                <Field label="مسئول هماهنگی"><input value={contractDraft.coordinator || ""} onChange={(e) => setContractField("coordinator", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="شماره همراه مسئول هماهنگی"><input dir="ltr" value={contractDraft.coordinatorPhone || ""} onChange={(e) => setContractField("coordinatorPhone", e.target.value.replace(/\D/g, ""))} className={inputCls(t)}/></Field>
+              </>}
+            </div>
+            <div className="mt-5 flex gap-2"><button type="button" onClick={saveContractEditor} className="rounded-xl bg-violet-600 px-6 py-2.5 text-sm font-bold text-white">{contractEditorMode === "renew" ? "ثبت تمدید قرارداد" : "ذخیره تغییرات"}</button><button type="button" onClick={() => setContractEditorMode(null)} className={`rounded-xl border px-5 py-2.5 text-sm ${t.border}`}>انصراف</button></div>
+          </div>
+        </div>
+      )}
 
       {showServiceContractPreview && (
         <ServiceContractPreviewModal contract={contract} t={t} onClose={() => setShowServiceContractPreview(false)} onShowToast={notify} />

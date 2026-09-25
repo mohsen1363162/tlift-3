@@ -302,6 +302,7 @@ export type Contract = {
   additionalNotes?: string;
   devices?: ContractDeviceInfo[];
   photos?: string[];
+  renewalHistory?: Array<{ start: string; end: string; monthlyServiceFee: number; renewedAt: number }>;
 };
 
 export const initialContracts: Contract[] = [];

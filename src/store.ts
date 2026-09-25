@@ -1103,6 +1103,26 @@ export const appStore = {
     saveStorage("tlift_contracts", contracts);
     notifyListeners();
   },
+  renewContract: (updated: Contract) => {
+    const previous = contracts.find((c) => c.id === updated.id);
+    const renewed: Contract = {
+      ...updated,
+      kind: "renew",
+      renewalHistory: [...(previous?.renewalHistory || []), ...(previous ? [{ start: previous.start, end: previous.end, monthlyServiceFee: previous.monthlyServiceFee || 0, renewedAt: Date.now() }] : [])],
+    };
+    contracts = contracts.map((c) => c.id === renewed.id ? renewed : c);
+    saveStorage("tlift_contracts", contracts);
+    const details = appStore.getContractDetails(renewed.id);
+    const yearMatch = renewed.start?.match(/(\d{4})/);
+    const year = yearMatch ? Number(yearMatch[1]) : 1405;
+    const amount = renewed.monthlyServiceFee || details.months.at(-1)?.amount || 0;
+    const maxId = details.months.reduce((max, month) => Math.max(max, month.id), 0);
+    const newPeriod = generateInitialMonths(year, amount).map((month, index) => ({ ...month, id: maxId + index + 1, done: false, date: undefined, inTime: undefined, outTime: undefined, paid: false, paidDate: undefined, paidMethod: undefined, paidRef: undefined, doneBy: undefined, techs: undefined, report: undefined, faultsCount: 0, faultsList: [], partsAmount: 0, partsList: [], wage: 0 }));
+    contractDetailsMap[renewed.id] = { ...details, months: [...details.months, ...newPeriod] };
+    saveStorage("tlift_contract_details", contractDetailsMap);
+    notifyListeners();
+    return renewed;
+  },
   deleteContract: (id: number) => {
     contracts = contracts.filter((c) => c.id !== id);
     saveStorage("tlift_contracts", contracts);
