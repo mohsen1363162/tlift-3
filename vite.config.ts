@@ -77,8 +77,11 @@ export default defineConfig({
         skipWaiting: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
+      // Service Worker در محیط توسعه/Preview فعال نمی‌شود؛ ثبت آن در dev
+      // می‌تواند کش قدیمی یا چرخه reload بسازد و صفحه سفید نشان دهد.
+      // در build تولیدی PWA همچنان کاملاً فعال است.
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: "module",
       },
     }),

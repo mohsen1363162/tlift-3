@@ -11,7 +11,15 @@ import { startCloudSync } from './cloudSync';
 // بروزرسانی PWA: در هر بار ورود/بازگشت به صفحه، نسخه جدید Service Worker
 // مستقیماً از سرور بررسی می‌شود. پس از فعال‌شدن نسخه تازه فقط یک‌بار صفحه
 // بازنشانی می‌شود تا کاربر روی فایل‌های نسخه قبلی باقی نماند.
-if ("serviceWorker" in navigator) {
+// در Preview توسعه، Service Worker قبلی را حذف می‌کنیم تا کش قدیمی باعث
+// صفحه سفید یا reload پی‌درپی نشود. در نسخه production رفتار PWA حفظ می‌شود.
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => void registration.unregister());
+  });
+}
+
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
   let reloadingForUpdate = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
