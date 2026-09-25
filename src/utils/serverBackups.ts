@@ -19,7 +19,11 @@ async function request(params: Record<string, string>) {
   throw last instanceof Error ? last : new Error("سرور پشتیبان در دسترس نیست");
 }
 export const listServerBackupDates = async (): Promise<string[]> => request({ action: "backups" });
+export const getServerBackupData = async (date: string, key: string): Promise<any> => {
+  const row = await request({ action: "backup", key, date });
+  return row?.data;
+};
 export const getContractsServerBackup = async (date: string): Promise<any[]> => {
-  const row = await request({ action: "backup", key: "tlift_contracts", date });
-  return Array.isArray(row?.data) ? row.data : [];
+  const data = await getServerBackupData(date, "tlift_contracts");
+  return Array.isArray(data) ? data : [];
 };

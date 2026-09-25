@@ -17,8 +17,9 @@ import {
 } from "lucide-react";
 import { Theme } from "../theme";
 import { downloadFullBackup, restoreFullBackup } from "../utils/fullBackup";
-import { getContractsServerBackup, listServerBackupDates } from "../utils/serverBackups";
+import { getContractsServerBackup, getServerBackupData, listServerBackupDates } from "../utils/serverBackups";
 import { appStore, useContracts } from "../store";
+import { pushKey } from "../cloudSync";
 
 interface CpanelSettingsPageProps {
   t: Theme;
@@ -71,7 +72,18 @@ export default function CpanelSettingsPage({
       const restored = backupContracts.find((item) => String(item.id) === selectedContractId);
       if (!restored) return onShowToast("این قرارداد در نسخه انتخابی وجود ندارد");
       appStore.updateContract(restored);
-      onShowToast(`قرارداد ${restored.no} بدون تغییر سایر قراردادها بازیابی شد`);
+      // جزئیات همان قرارداد (سرویس‌ها، پرداخت‌ها و خرابی‌ها) نیز مستقل بازیابی می‌شود.
+      try {
+        const backupDetails = await getServerBackupData(selectedBackupDate, "tlift_contract_details");
+        const currentDetails = JSON.parse(localStorage.getItem("tlift_contract_details") || "{}");
+        if (backupDetails?.[selectedContractId]) {
+          currentDetails[selectedContractId] = backupDetails[selectedContractId];
+          localStorage.setItem("tlift_contract_details", JSON.stringify(currentDetails));
+          pushKey("tlift_contract_details", currentDetails);
+        }
+      } catch { /* ممکن است آن روز جزئیات تغییری نکرده و نسخه مستقل موجود نباشد */ }
+      onShowToast(`قرارداد ${restored.no} و جزئیات موجود آن بدون تغییر سایر قراردادها بازیابی شد`);
+      setTimeout(() => window.location.reload(), 1200);
     } catch { onShowToast("بازیابی قرارداد از سرور انجام نشد"); }
   };
 
