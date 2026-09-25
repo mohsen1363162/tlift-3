@@ -11,7 +11,8 @@ const defaultDraft = (contract: Contract): ServiceContractDraft => ({
   representative: contract.serviceContractDraft?.representative || "محسن امامی برسری",
   startDate: contract.serviceContractDraft?.startDate || contract.start || "",
   endDate: contract.serviceContractDraft?.endDate || contract.end || "",
-  monthlyAmountToman: contract.serviceContractDraft?.monthlyAmountToman || (contract.monthlyServiceFee ? String(Math.round(contract.monthlyServiceFee / 10)) : ""),
+  // مبلغ همیشه از آخرین مبلغ قرارداد/تمدید خوانده می‌شود، نه نسخه چاپی سال قبل.
+  monthlyAmountToman: contract.monthlyServiceFee ? String(Math.round(contract.monthlyServiceFee / 10)) : (contract.serviceContractDraft?.monthlyAmountToman || ""),
   deviceCount: contract.serviceContractDraft?.deviceCount || "1",
   stops: contract.serviceContractDraft?.stops || "",
   doorType: contract.serviceContractDraft?.doorType || "",

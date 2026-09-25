@@ -59,6 +59,7 @@ const TechnicianDashboard = lazy(() => import("./components/TechnicianDashboard"
 const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
 const TriangleKeyLocationsPage = lazy(() => import("./components/TriangleKeyLocationsPage"));
+const NotificationsPanel = lazy(() => import("./components/NotificationsPanel"));
 
 function PageLoader({ label = "در حال بارگذاری…" }: { label?: string }) {
   return (
@@ -70,7 +71,7 @@ function PageLoader({ label = "در حال بارگذاری…" }: { label?: str
     </div>
   );
 }
-import { useContracts, useMarketingItems, useCompanyAccessSettings, appStore, MonthService } from "./store";
+import { useContracts, useMarketingItems, useCompanyAccessSettings, useNotifications, appStore, MonthService } from "./store";
 import { useAuth } from "./contexts/AuthContext";
 import { checkForAppUpdates, APP_VERSION } from "./utils/appUpdater";
 import { CustomerAuthData } from "./utils/customerAuth";
@@ -167,6 +168,7 @@ export default function App() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [androidModal, setAndroidModal] = useState(false);
   const [supportModal, setSupportModal] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
@@ -185,6 +187,8 @@ export default function App() {
   };
 
   const contracts = useContracts();
+  const notifications = useNotifications();
+  const unreadNotifications = notifications.filter((item) => !item.read).length;
   const marketingItems = useMarketingItems();
   const accessSettings = useCompanyAccessSettings();
   const currentLeader = accessSettings.leaders.find((leader) => leader.phone.replace(/\D/g, "").slice(-10) === (currentUserInfo?.phone || "").replace(/\D/g, "").slice(-10));
@@ -813,9 +817,10 @@ export default function App() {
           className={`flex items-center justify-between border-t ${t.border} ${t.chrome} px-3 py-1.5 text-[11.5px] ${t.sub}`}
         >
           <div className="flex items-center gap-5">
-            <span className="flex items-center gap-1">
-              <Megaphone size={13} /> اعلان ها
-            </span>
+            <button type="button" onClick={() => setNotificationsOpen(true)} className="relative flex items-center gap-1 transition hover:text-amber-400">
+              <Megaphone size={13} /> اعلان‌ها
+              {unreadNotifications > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unreadNotifications.toLocaleString("fa-IR")}</span>}
+            </button>
             <span
               onClick={() => currentUserInfo && setWelcomeUser(currentUserInfo)}
               title="کلیک برای نمایش پیام خوش‌آمدگویی"
@@ -850,6 +855,10 @@ export default function App() {
             </span>
           </div>
         </div>
+
+        {notificationsOpen && (
+          <Suspense fallback={null}><NotificationsPanel t={t} onClose={() => setNotificationsOpen(false)} onShowToast={showToast} onOpenContract={(contractId) => { const selected = contracts.find((item) => item.id === contractId); if (selected) openContractView(selected); }} /></Suspense>
+        )}
 
         {supportModal && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" onClick={() => setSupportModal(false)}>

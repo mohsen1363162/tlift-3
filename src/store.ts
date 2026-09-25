@@ -62,6 +62,7 @@ export type MonthService = {
 
 export type PaymentRecord = {
   id: number;
+  approvalStatus?: "pending" | "approved" | "rejected";
   title: string;
   date: string;
   amount: number;
@@ -78,6 +79,22 @@ export type PaymentRecord = {
   bank?: string;
   accountNo?: string;
   installmentNo?: number;
+};
+
+export type AppNotification = {
+  id: string;
+  type: "payment" | "breakdown" | "ticket";
+  title: string;
+  message: string;
+  contractId: number;
+  contractNo?: string;
+  buildingName?: string;
+  createdAt: number;
+  read: boolean;
+  actionStatus?: "pending" | "approved" | "rejected" | "assigned";
+  paymentId?: number;
+  breakdownId?: string;
+  senderName?: string;
 };
 
 export type Invoice = {
@@ -758,6 +775,7 @@ const INITIAL_SCHEDULED_SERVICES: ScheduledService[] = [
   },
 ];
 
+let notifications: AppNotification[] = loadStorage<AppNotification[]>("tlift_notifications_v1", []);
 let contracts: Contract[] = loadStorage<Contract[]>("tlift_contracts", initialContracts);
 let customers: Customer[] = loadStorage<Customer[]>("tlift_customers", initialCustomers);
 let staff: Staff[] = loadStorage<Staff[]>("tlift_staff", initialStaff);
@@ -887,6 +905,9 @@ const notifyListeners = () => {
 registerApplier((key, data) => {
   if (data === null || data === undefined) return;
   switch (key) {
+    case "tlift_notifications_v1":
+      notifications = data as AppNotification[];
+      break;
     case "tlift_contracts":
       contracts = data as Contract[];
       break;
@@ -939,6 +960,37 @@ registerApplier((key, data) => {
 
 // Store API
 export const appStore = {
+  // اعلان‌های مدیریتی همگام‌شونده بین دستگاه‌ها
+  getNotifications: () => notifications,
+  addNotification: (item: Omit<AppNotification, "id" | "createdAt" | "read">) => {
+    const created: AppNotification = { ...item, id: `ntf-${Date.now()}-${Math.floor(Math.random() * 1000)}`, createdAt: Date.now(), read: false };
+    notifications = [created, ...notifications].slice(0, 500);
+    saveStorage("tlift_notifications_v1", notifications);
+    notifyListeners();
+    return created;
+  },
+  markNotificationRead: (id: string) => {
+    notifications = notifications.map((item) => item.id === id ? { ...item, read: true } : item);
+    saveStorage("tlift_notifications_v1", notifications);
+    notifyListeners();
+  },
+  resolveNotification: (id: string, approved: boolean) => {
+    const item = notifications.find((notification) => notification.id === id);
+    if (!item) return;
+    if (item.type === "payment" && item.paymentId) {
+      const details = appStore.getContractDetails(item.contractId);
+      const payment = details.payments.find((entry) => entry.id === item.paymentId);
+      appStore.updatePayment(item.contractId, item.paymentId, { approvalStatus: approved ? "approved" : "rejected" });
+      if (payment?.monthId) {
+        contractDetailsMap[item.contractId] = { ...contractDetailsMap[item.contractId], months: contractDetailsMap[item.contractId].months.map((month) => month.id === payment.monthId ? { ...month, paid: approved, paidDate: approved ? payment.date : undefined, paidMethod: approved ? payment.method : undefined, paidRef: approved ? payment.ref : undefined } : month) };
+        saveStorage("tlift_contract_details", contractDetailsMap);
+      }
+    }
+    notifications = notifications.map((notification) => notification.id === id ? { ...notification, read: true, actionStatus: approved ? "approved" : "rejected" } : notification);
+    saveStorage("tlift_notifications_v1", notifications);
+    notifyListeners();
+  },
+
   // CONTRACTS & CUSTOMERS DATABASE RESET
   clearAllCustomerContractData: () => {
     contracts = [];
@@ -1278,22 +1330,10 @@ export const appStore = {
     markMonthId?: number
   ) => {
     const details = appStore.getContractDetails(contractId);
-    const newRecord: PaymentRecord = { ...payment, id: Date.now() };
+    const newRecord: PaymentRecord = { ...payment, id: Date.now(), approvalStatus: "pending" };
 
-    let updatedMonths = details.months;
-    if (markMonthId) {
-      updatedMonths = details.months.map((m) =>
-        m.id === markMonthId
-          ? {
-              ...m,
-              paid: true,
-              paidDate: payment.date,
-              paidMethod: payment.method,
-              paidRef: payment.ref,
-            }
-          : m
-      );
-    }
+    // تا زمان تأیید مدیر، پرداخت وارد پرتال مشتری و وضعیت تسویه ماه نمی‌شود.
+    const updatedMonths = details.months;
 
     contractDetailsMap[contractId] = {
       ...details,
@@ -1302,6 +1342,8 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
+    const paymentContract = contracts.find((item) => item.id === contractId);
+    appStore.addNotification({ type: "payment", title: "پرداخت جدید منتظر تأیید", message: `${payment.amount.toLocaleString("fa-IR")} ریال برای ${paymentContract?.building.replace(/^\*\s*/, "") || "قرارداد"} ثبت شده است.`, contractId, contractNo: paymentContract?.no, buildingName: paymentContract?.building, paymentId: newRecord.id, actionStatus: "pending" });
     notifyListeners();
 
     // همگام‌سازی خودکار پس از ثبت پرداخت
@@ -1421,6 +1463,9 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
+    const breakdownContract = contracts.find((item) => item.id === contractId);
+    const isTicket = breakdown.report.startsWith("[تیکت]");
+    appStore.addNotification({ type: isTicket ? "ticket" : "breakdown", title: isTicket ? "پیام یا تیکت جدید مشتری" : "خرابی جدید ثبت شد", message: breakdown.report.replace(/^\[تیکت\]\s*/, "") || breakdown.description, contractId, contractNo: breakdownContract?.no, buildingName: breakdownContract?.building, breakdownId: newBreakdown.id, senderName: breakdown.declaredBy, actionStatus: "pending" });
     notifyListeners();
     return newBreakdown;
   },
@@ -1829,6 +1874,13 @@ export const appStore = {
 };
 
 // React Hooks
+export function useNotifications() {
+  return useSyncExternalStore(
+    (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
+    () => notifications
+  );
+}
+
 export function useContracts() {
   return useSyncExternalStore(
     (callback) => {
