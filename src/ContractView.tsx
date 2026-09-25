@@ -51,7 +51,7 @@ import ServiceReportView from "./components/ServiceReportView";
 import { ContractPaymentsView } from "./components/ContractPaymentsView";
 import ContractBreakdownsView from "./components/ContractBreakdownsView";
 import ContractServicesListView from "./components/ContractServicesListView";
-import { printServiceMaintenanceContract } from "./utils/printServiceContract";
+import ServiceContractPreviewModal from "./components/ServiceContractPreviewModal";
 import BreakdownModal from "./components/BreakdownModal";
 import { Field, inputCls, SearchSelect, DatePicker } from "./ui";
 import { appStore, useContractDetails, MonthService, PaymentRecord, Invoice } from "./store";
@@ -71,6 +71,7 @@ export default function ContractView({
   onOpenServiceReport?: (monthService: MonthService, contract: Contract) => void;
 }) {
   const [toast, setToast] = useState<string | null>(null);
+  const [showServiceContractPreview, setShowServiceContractPreview] = useState(false);
   const notify = (m: string) => {
     setToast(m);
     setTimeout(() => setToast(null), 2500);
@@ -412,7 +413,7 @@ export default function ContractView({
                   if (isPayments) {
                     setSubView("payments");
                   } else if (isServiceContractPrint) {
-                    if (!printServiceMaintenanceContract(contract)) notify("برای چاپ، اجازه بازشدن پنجره جدید را فعال کنید");
+                    setShowServiceContractPreview(true);
                   } else {
                     notify(label);
                   }
@@ -1622,8 +1623,12 @@ export default function ContractView({
         }}
       />
 
+      {showServiceContractPreview && (
+        <ServiceContractPreviewModal contract={contract} t={t} onClose={() => setShowServiceContractPreview(false)} onShowToast={notify} />
+      )}
+
       {toast && (
-        <div className="fixed bottom-16 left-1/2 z-50 -translate-x-1/2 rounded bg-neutral-800 px-4 py-2 text-[12.5px] text-white shadow-lg">
+        <div className="fixed bottom-16 left-1/2 z-[100] -translate-x-1/2 rounded bg-neutral-800 px-4 py-2 text-[12.5px] text-white shadow-lg">
           {toast}
         </div>
       )}

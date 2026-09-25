@@ -245,6 +245,21 @@ export const provinces = [
 export const usages = ["مسکونی", "تجاری", "صنعتی", "اداری", "بهداشتی درمانی", "آموزشی", "سایر"];
 export const zones = ["حکیم", "شهرک قدس", "مرکز شهر", "مینودر", "بلوار شهید بهشتی"];
 
+export type ServiceContractDraft = {
+  customerName: string;
+  address: string;
+  representative: string;
+  startDate: string;
+  endDate: string;
+  monthlyAmountToman: string;
+  deviceCount: string;
+  stops: string;
+  doorType: string;
+  capacityPersons: string;
+  capacityKg: string;
+  savedAt?: number;
+};
+
 export type Contract = {
   id: number;
   no: string;
@@ -275,6 +290,8 @@ export type Contract = {
   motorOilChangeDates?: string[];
   maintenanceLastEditedBy?: string;
   maintenanceLastEditedAt?: number;
+  /** نسخه ویرایش‌شده متن/مشخصات چاپ قرارداد که برای تمدید سال بعد باقی می‌ماند. */
+  serviceContractDraft?: ServiceContractDraft;
 };
 
 export const initialContracts: Contract[] = [];
