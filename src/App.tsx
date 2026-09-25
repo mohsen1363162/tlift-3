@@ -166,6 +166,7 @@ export default function App() {
   };
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [androidModal, setAndroidModal] = useState(false);
+  const [supportModal, setSupportModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
@@ -836,19 +837,40 @@ export default function App() {
               <LogOut size={13} /> خروج
             </button>
             <SyncIndicator />
-            <span className="flex items-center gap-1">
+            <button type="button" onClick={() => setSupportModal(true)} className="flex items-center gap-1 transition hover:text-sky-400">
               <Headphones size={13} /> پشتیبانی
-            </span>
+            </button>
             <span className="flex items-center gap-1">
               <MessageSquare size={13} /> مانده پیامک: ۵٬۳۲۶٬۳۹۸ ریال
             </span>
           </div>
           <div className="flex items-center gap-5">
             <span className="flex items-center gap-1">
-              <GitBranch size={13} /> نسخه 1.1.22
+              <GitBranch size={13} /> نسخه {APP_VERSION}
             </span>
           </div>
         </div>
+
+        {supportModal && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" onClick={() => setSupportModal(false)}>
+            <div dir="rtl" className={`w-full max-w-md rounded-2xl border p-5 text-right shadow-2xl ${t.card} ${t.border}`} onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/15 text-sky-500"><Headphones size={22} /></div>
+                  <div><h2 className={`font-bold ${t.text}`}>پشتیبانی و مدیریت</h2><p className={`mt-1 text-xs ${t.sub}`}>شرکت بنیان نوین گستر آسمان‌سرا</p></div>
+                </div>
+                <button type="button" onClick={() => setSupportModal(false)} className={`rounded-lg p-1.5 ${t.hover}`}><X size={17} /></button>
+              </div>
+              <div className={`mt-5 space-y-3 rounded-xl border p-4 text-sm ${t.border}`}>
+                <div><span className={`block text-xs ${t.sub}`}>مدیریت</span><strong className={t.text}>محسن امامی برسری</strong></div>
+                <div><span className={`block text-xs ${t.sub}`}>شماره تماس</span><a dir="ltr" href="tel:09192868509" className="font-bold text-sky-500 hover:underline">09192868509</a></div>
+                <div><span className={`block text-xs ${t.sub}`}>آدرس</span><span className={t.text}>الوند، فلکه دوم شهر صنعتی، جنب بانک ملی، ساختمان نوین</span></div>
+                <div><span className={`block text-xs ${t.sub}`}>شماره ثبت شرکت</span><strong className={t.text}>۳۱۳۸</strong></div>
+              </div>
+              <a href="tel:09192868509" className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-700"><Headphones size={17} /> تماس با مدیریت</a>
+            </div>
+          </div>
+        )}
 
         {/* کادر خوش‌آمدگویی شکیل ۵ ثانیه‌ای */}
         {welcomeUser && (
