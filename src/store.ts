@@ -271,7 +271,15 @@ async function restoreBootstrapWhenEmpty() {
     return false;
   }
 }
-void restoreBootstrapWhenEmpty().then((restored) => { if (restored) window.location.reload(); });
+void restoreBootstrapWhenEmpty().then((restored) => {
+  if (!restored) return;
+  // بازیابی اولیه بدون reload انجام می‌شود تا کاربر وسط فرم ثبت قرارداد به صفحه خانه برنگردد.
+  contracts = loadStorage<Contract[]>("tlift_contracts", contracts);
+  customers = loadStorage<Customer[]>("tlift_customers", customers);
+  const restoredDetails = loadStorage<Record<number, ContractDetails>>("tlift_contract_details", contractDetailsMap);
+  Object.assign(contractDetailsMap, restoredDetails);
+  notifyListeners();
+});
 
 // اعمال مبالغ واقعی و مصوب قراردادها از لیست رسمی مدیریت به حافظه مرورگر
 function syncOfficialContractFees() {

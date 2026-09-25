@@ -20,14 +20,8 @@ if (import.meta.env.DEV && "serviceWorker" in navigator) {
 }
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  let reloadingForUpdate = false;
-
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloadingForUpdate) return;
-    reloadingForUpdate = true;
-    window.location.reload();
-  });
-
+  // تعویض Service Worker نباید وسط تکمیل فرم یا ثبت قرارداد صفحه را به خانه برگرداند.
+  // نسخه تازه در بازشدن بعدی برنامه اعمال می‌شود و آپدیت دستی همچنان در دسترس است.
   const updateServiceWorker = async () => {
     try {
       const registration = await navigator.serviceWorker.getRegistration("/");
