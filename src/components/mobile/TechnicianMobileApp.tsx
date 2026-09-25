@@ -109,6 +109,25 @@ const distanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) 
   return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 const monthNumber = (name: string) => Math.max(1, JALALI_MONTH_NAMES.indexOf(name) + 1);
+const compressProjectPhoto = (file: File): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error("خواندن عکس انجام نشد"));
+  reader.onload = () => {
+    const image = new Image();
+    image.onerror = () => reject(new Error("فایل تصویر معتبر نیست"));
+    image.onload = () => {
+      const max = 1024;
+      const scale = Math.min(1, max / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.65));
+    };
+    image.src = String(reader.result);
+  };
+  reader.readAsDataURL(file);
+});
 const jobDate = (job: Job) =>
   normalizeJalaliDate(job.month.plannedDate || job.month.date) ||
   `${job.month.y}/${String(monthNumber(job.month.m)).padStart(2, "0")}/${String(job.month.id || 1).padStart(2, "0")}`;
@@ -1136,6 +1155,22 @@ export default function TechnicianMobileApp({
     const c = selected.contract;
     const details = appStore.getContractDetails(c.id);
     const projectPhotos = [...(c.photos || []), ...details.months.flatMap((month) => month.attachments || [])].filter((photo, index, all) => photo && all.indexOf(photo) === index);
+    const addProjectPhotos = async (files: FileList | null) => {
+      if (!files?.length) return;
+      try {
+        notify("در حال آماده‌سازی و ذخیره عکس‌ها...");
+        const remaining = Math.max(0, 30 - (c.photos || []).length);
+        if (remaining === 0) return notify("حداکثر ۳۰ عکس مستقیم برای هر پروژه قابل نگهداری است");
+        const added = await Promise.all(Array.from(files).slice(0, Math.min(8, remaining)).map(compressProjectPhoto));
+        const updatedContract = { ...c, photos: [...(c.photos || []), ...added] };
+        appStore.updateContract(updatedContract);
+        setSelected((current) => current ? { ...current, contract: updatedContract } : current);
+        syncNow();
+        notify(`${fa(added.length)} عکس در پرونده پروژه ذخیره شد`);
+      } catch {
+        notify("ذخیره عکس انجام نشد؛ دوباره تلاش کنید");
+      }
+    };
     const debt = details.months.filter((m) => m.done && !m.paid).reduce((s, m) => s + m.amount, 0);
     const savedLoc = appStore.getContractGeoLocation(c.id);
     const targetLat = savedLoc?.latitude ?? 36.2688;
@@ -1574,7 +1609,14 @@ export default function TechnicianMobileApp({
                 </div>
               )}
               {contractInfoView === "representatives" && <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">{[["مدیر / کارفرما", c.manager],["شماره تماس", c.phone],["مسئول هماهنگی", c.coordinator],["شماره مسئول هماهنگی", c.coordinatorPhone]].map(([key,value]) => <div key={key} className="flex justify-between gap-3 border-b p-3 text-[12px] last:border-0"><span className="text-gray-500">{key}</span><b className="text-left text-gray-800">{value || "ثبت نشده"}</b></div>)}</div>}
-              {contractInfoView === "photos" && <div className="grid grid-cols-2 gap-2">{projectPhotos.map((photo, index) => <a key={`${photo.slice(0,30)}-${index}`} href={photo} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border bg-white shadow-sm"><img src={photo} alt={`عکس پروژه ${index + 1}`} className="aspect-square w-full object-cover"/><div className="p-2 text-center text-[10px] text-gray-600">عکس {fa(index + 1)}</div></a>)}{projectPhotos.length === 0 && <div className="col-span-2 rounded-2xl border border-dashed bg-white py-12 text-center text-[12px] text-gray-400">هنوز عکسی برای این پروژه یا سرویس‌های آن ثبت نشده است.</div>}</div>}
+              {contractInfoView === "photos" && <div>
+                <div className="mb-3 grid grid-cols-2 gap-2">
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-[12px] font-bold text-white shadow-sm"><Camera size={17}/> گرفتن عکس<input type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => { void addProjectPhotos(event.target.files); event.currentTarget.value = ""; }}/></label>
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-violet-600 py-3 text-[12px] font-bold text-white shadow-sm"><ImageIcon size={17}/> انتخاب از گالری<input type="file" accept="image/*" multiple className="hidden" onChange={(event) => { void addProjectPhotos(event.target.files); event.currentTarget.value = ""; }}/></label>
+                </div>
+                <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50 p-2.5 text-[10.5px] leading-5 text-blue-800">عکس‌ها با حجم مناسب فشرده و در پرونده همین ساختمان ذخیره و همگام‌سازی می‌شوند. در هر مرحله حداکثر ۸ عکس انتخاب کنید.</div>
+                <div className="grid grid-cols-2 gap-2">{projectPhotos.map((photo, index) => <a key={`${photo.slice(0,30)}-${index}`} href={photo} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border bg-white shadow-sm"><img src={photo} alt={`عکس پروژه ${index + 1}`} className="aspect-square w-full object-cover"/><div className="p-2 text-center text-[10px] text-gray-600">عکس {fa(index + 1)}</div></a>)}{projectPhotos.length === 0 && <div className="col-span-2 rounded-2xl border border-dashed bg-white py-12 text-center text-[12px] text-gray-400">هنوز عکسی برای این پروژه یا سرویس‌های آن ثبت نشده است.</div>}</div>
+              </div>}
             </div>
           </div>
         )}
