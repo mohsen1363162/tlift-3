@@ -169,6 +169,9 @@ export default function ContractView({
     ["مانده مشتری", money(debt)],
     ["نام ساختمان", contract.building],
     ["مسئول هماهنگی/مشتری", contract.manager],
+    ["محل کلید سه‌گوش", contract.triangleKeyLocation || "ثبت نشده"],
+    ["آخرین نظافت", contract.cleaningDates?.at(-1) || "ثبت نشده"],
+    ["آخرین تعویض روغن موتور", contract.motorOilChangeDates?.at(-1) || "ثبت نشده"],
   ];
 
   const actions = [

@@ -15,9 +15,16 @@ export default function TriangleKeyLocationsPage({
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Contract | null>(null);
   const [location, setLocation] = useState("");
+  const [cleaningDates, setCleaningDates] = useState<string[]>([]);
+  const [oilDates, setOilDates] = useState<string[]>([]);
+  const [newCleaningDate, setNewCleaningDate] = useState("");
+  const [newOilDate, setNewOilDate] = useState("");
+  const [listMode, setListMode] = useState<"search" | "noCleaning" | "noOil">("search");
 
   const results = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("fa");
+    if (listMode === "noCleaning") return contracts.filter((contract) => !(contract.cleaningDates || []).length);
+    if (listMode === "noOil") return contracts.filter((contract) => !(contract.motorOilChangeDates || []).length);
     if (q.length < 2) return [];
     return contracts
       .filter((contract) =>
@@ -26,19 +33,32 @@ export default function TriangleKeyLocationsPage({
           .some((value) => String(value).toLocaleLowerCase("fa").includes(q))
       )
       .slice(0, 50);
-  }, [contracts, query]);
+  }, [contracts, query, listMode]);
+
+  const lastDate = (dates?: string[]) => dates?.length ? dates[dates.length - 1] : "ثبت نشده";
+  const addDate = (value: string, dates: string[], setter: (value: string[]) => void, clear: () => void) => {
+    const normalized = value.trim().replace(/-/g, "/");
+    if (!/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(normalized)) return onShowToast("تاریخ را مانند ۱۴۰۵/۰۷/۱۵ وارد کنید");
+    setter([...dates, normalized]);
+    clear();
+  };
 
   const printLocations = () => {
-    const rows = contracts.map((contract, index) => `<tr><td>${index + 1}</td><td>${contract.building.replace(/^\*\s*/, "")}</td><td>${contract.manager || "-"}</td><td>${contract.no}</td><td>${contract.triangleKeyLocation || ""}</td></tr>`).join("");
+    const printable = listMode === "search" ? contracts : results;
+    const rows = printable.map((contract, index) => `<tr><td>${index + 1}</td><td>${contract.building.replace(/^\*\s*/, "")}</td><td>${contract.manager || "-"}</td><td>${contract.no}</td><td>${contract.triangleKeyLocation || ""}</td><td>${lastDate(contract.cleaningDates)}</td><td>${lastDate(contract.motorOilChangeDates)}</td></tr>`).join("");
     const popup = window.open("", "_blank", "width=1000,height=700");
     if (!popup) return onShowToast("مرورگر پنجره چاپ را مسدود کرده است");
-    popup.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>جدول محل کلیدهای سه‌گوش</title><style>body{font-family:Tahoma,sans-serif;padding:24px;color:#111}h1{font-size:18px;text-align:center;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #555;padding:8px;text-align:right}th{background:#eee}@page{size:A4 landscape;margin:12mm}</style></head><body><h1>جدول محل کلیدهای سه‌گوش نجات اضطراری</h1><table><thead><tr><th>ردیف</th><th>ساختمان</th><th>مشتری / مسئول</th><th>قرارداد</th><th>محل کلید سه‌گوش</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);
+    popup.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>جدول محل کلیدهای سه‌گوش</title><style>body{font-family:Tahoma,sans-serif;padding:24px;color:#111}h1{font-size:18px;text-align:center;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #555;padding:8px;text-align:right}th{background:#eee}@page{size:A4 landscape;margin:12mm}</style></head><body><h1>جدول محل کلیدهای سه‌گوش نجات اضطراری</h1><table><thead><tr><th>ردیف</th><th>ساختمان</th><th>مشتری / مسئول</th><th>قرارداد</th><th>محل کلید سه‌گوش</th><th>آخرین نظافت</th><th>آخرین تعویض روغن موتور</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);
     popup.document.close();
   };
 
   const startEdit = (contract: Contract) => {
     setEditing(contract);
     setLocation(contract.triangleKeyLocation || "");
+    setCleaningDates([...(contract.cleaningDates || [])]);
+    setOilDates([...(contract.motorOilChangeDates || [])]);
+    setNewCleaningDate("");
+    setNewOilDate("");
   };
 
   const save = () => {
@@ -46,6 +66,8 @@ export default function TriangleKeyLocationsPage({
     appStore.updateContract({
       ...editing,
       triangleKeyLocation: location.trim() || undefined,
+      cleaningDates,
+      motorOilChangeDates: oilDates,
     });
     setEditing(null);
     setLocation("");
@@ -79,8 +101,13 @@ export default function TriangleKeyLocationsPage({
           />
           {query && <button type="button" onClick={() => setQuery("")}><X size={17} className={t.sub} /></button>}
         </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setListMode("search")} className={`rounded-lg px-3 py-2 text-xs ${listMode === "search" ? "bg-blue-600 text-white" : `${t.hover} ${t.sub}`}`}>جستجوی ساختمان</button>
+          <button type="button" onClick={() => setListMode("noCleaning")} className={`rounded-lg px-3 py-2 text-xs ${listMode === "noCleaning" ? "bg-amber-600 text-white" : `${t.hover} ${t.sub}`}`}>فهرست فاقد سابقه نظافت</button>
+          <button type="button" onClick={() => setListMode("noOil")} className={`rounded-lg px-3 py-2 text-xs ${listMode === "noOil" ? "bg-red-600 text-white" : `${t.hover} ${t.sub}`}`}>فهرست فاقد تعویض روغن</button>
+        </div>
 
-        {query.trim().length < 2 ? (
+        {listMode === "search" && query.trim().length < 2 ? (
           <div className={`py-14 text-center text-sm ${t.sub}`}>برای حفظ محرمانگی، فهرست ساختمان‌ها نمایش داده نمی‌شود. حداقل دو حرف جستجو کنید.</div>
         ) : results.length === 0 ? (
           <div className={`py-14 text-center text-sm ${t.sub}`}>ساختمانی با این مشخصات پیدا نشد.</div>
@@ -97,9 +124,10 @@ export default function TriangleKeyLocationsPage({
                     {contract.triangleKeyLocation ? "ویرایش محل کلید" : "ثبت محل کلید"}
                   </button>
                 </div>
-                <div className={`mt-3 rounded-lg border px-3 py-3 text-sm ${t.border} ${contract.triangleKeyLocation ? t.text : t.sub}`}>
-                  <span className="ml-2 text-xs font-medium text-red-500">محل کلید:</span>
-                  {contract.triangleKeyLocation || "ثبت نشده"}
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  <div className={`rounded-lg border px-3 py-3 text-sm ${t.border} ${contract.triangleKeyLocation ? t.text : t.sub}`}><span className="mb-1 block text-xs font-medium text-red-500">محل کلید سه‌گوش</span>{contract.triangleKeyLocation || "ثبت نشده"}</div>
+                  <div className={`rounded-lg border px-3 py-3 text-sm ${t.border} ${(contract.cleaningDates || []).length ? t.text : t.sub}`}><span className="mb-1 block text-xs font-medium text-amber-600">آخرین نظافت</span>{lastDate(contract.cleaningDates)}</div>
+                  <div className={`rounded-lg border px-3 py-3 text-sm ${t.border} ${(contract.motorOilChangeDates || []).length ? t.text : t.sub}`}><span className="mb-1 block text-xs font-medium text-blue-600">آخرین تعویض روغن موتور</span>{lastDate(contract.motorOilChangeDates)}</div>
                 </div>
               </div>
             ))}
@@ -119,6 +147,18 @@ export default function TriangleKeyLocationsPage({
               placeholder="مثلاً: داخل جعبه آتش‌نشانی طبقه همکف، پشت کپسول"
               className={`mt-4 min-h-28 w-full rounded-xl border p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 ${t.input} ${t.border}`}
             />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className={`rounded-xl border p-3 ${t.border}`}>
+                <div className={`mb-2 text-xs font-bold ${t.text}`}>تاریخچه نظافت</div>
+                <div className="flex gap-1"><input value={newCleaningDate} onChange={(e) => setNewCleaningDate(e.target.value)} placeholder="۱۴۰۵/۰۷/۱۵" className={`min-w-0 flex-1 rounded-lg border px-2 py-2 text-xs ${t.input} ${t.border}`} /><button type="button" onClick={() => addDate(newCleaningDate, cleaningDates, setCleaningDates, () => setNewCleaningDate(""))} className="rounded-lg bg-amber-600 px-3 text-white">+</button></div>
+                <div className="mt-2 max-h-24 space-y-1 overflow-auto">{cleaningDates.map((date, index) => <div key={`${date}-${index}`} className={`flex justify-between rounded px-2 py-1 text-xs ${t.hover}`}><span>{date}</span><button type="button" onClick={() => setCleaningDates(cleaningDates.filter((_, i) => i !== index))} className="text-red-500">حذف</button></div>)}</div>
+              </div>
+              <div className={`rounded-xl border p-3 ${t.border}`}>
+                <div className={`mb-2 text-xs font-bold ${t.text}`}>تاریخچه تعویض روغن موتور</div>
+                <div className="flex gap-1"><input value={newOilDate} onChange={(e) => setNewOilDate(e.target.value)} placeholder="۱۴۰۵/۰۷/۱۵" className={`min-w-0 flex-1 rounded-lg border px-2 py-2 text-xs ${t.input} ${t.border}`} /><button type="button" onClick={() => addDate(newOilDate, oilDates, setOilDates, () => setNewOilDate(""))} className="rounded-lg bg-blue-600 px-3 text-white">+</button></div>
+                <div className="mt-2 max-h-24 space-y-1 overflow-auto">{oilDates.map((date, index) => <div key={`${date}-${index}`} className={`flex justify-between rounded px-2 py-1 text-xs ${t.hover}`}><span>{date}</span><button type="button" onClick={() => setOilDates(oilDates.filter((_, i) => i !== index))} className="text-red-500">حذف</button></div>)}</div>
+              </div>
+            </div>
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={save} className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm text-white hover:bg-emerald-700"><Save size={16} /> ذخیره</button>
               <button type="button" onClick={() => setEditing(null)} className={`rounded-lg border px-5 py-2.5 text-sm ${t.border} ${t.hover}`}>انصراف</button>

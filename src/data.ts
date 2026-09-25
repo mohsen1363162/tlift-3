@@ -269,6 +269,10 @@ export type Contract = {
   monthlyServiceFee?: number;
   /** محل نگهداری کلید سه‌گوش نجات اضطراری؛ فقط با ورود دستی مقدار می‌گیرد. */
   triangleKeyLocation?: string;
+  /** تاریخچه نظافت ساختمان/آسانسور به تاریخ شمسی. */
+  cleaningDates?: string[];
+  /** تاریخچه تعویض روغن موتور/گیربکس به تاریخ شمسی. */
+  motorOilChangeDates?: string[];
 };
 
 export const initialContracts: Contract[] = [];

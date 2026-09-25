@@ -206,6 +206,10 @@ export default function TechnicianMobileApp({
   const [triangleKeyQuery, setTriangleKeyQuery] = useState("");
   const [triangleKeyEditing, setTriangleKeyEditing] = useState<Contract | null>(null);
   const [triangleKeyLocation, setTriangleKeyLocation] = useState("");
+  const [triangleCleaningDates, setTriangleCleaningDates] = useState<string[]>([]);
+  const [triangleOilDates, setTriangleOilDates] = useState<string[]>([]);
+  const [triangleNewCleaning, setTriangleNewCleaning] = useState("");
+  const [triangleNewOil, setTriangleNewOil] = useState("");
   const [drawer, setDrawer] = useState(false);
   const [androidModal, setAndroidModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -3081,7 +3085,7 @@ export default function TechnicianMobileApp({
     ).slice(0, 40);
     const saveKeyLocation = () => {
       if (!triangleKeyEditing) return;
-      appStore.updateContract({ ...triangleKeyEditing, triangleKeyLocation: triangleKeyLocation.trim() || undefined });
+      appStore.updateContract({ ...triangleKeyEditing, triangleKeyLocation: triangleKeyLocation.trim() || undefined, cleaningDates: triangleCleaningDates, motorOilChangeDates: triangleOilDates });
       setTriangleKeyEditing(null);
       setTriangleKeyLocation("");
       syncNow();
@@ -3105,7 +3109,8 @@ export default function TechnicianMobileApp({
                 <div className="font-bold text-[13px] text-gray-800">{contract.building.replace(/^\*\s*/, "")}</div>
                 <div className="mt-1 text-[10.5px] text-gray-500">{contract.manager} · قرارداد {contract.no}</div>
                 <div className={`mt-2 rounded-xl border p-3 text-[12px] ${contract.triangleKeyLocation ? "border-red-100 bg-red-50 text-gray-800" : "border-dashed text-gray-400"}`}><span className="font-bold text-red-500">محل کلید: </span>{contract.triangleKeyLocation || "ثبت نشده"}</div>
-                <button type="button" onClick={() => { setTriangleKeyEditing(contract); setTriangleKeyLocation(contract.triangleKeyLocation || ""); }} className="mt-2 w-full rounded-xl bg-blue-600 py-2.5 text-[12px] font-bold text-white">{contract.triangleKeyLocation ? "ویرایش محل کلید" : "ثبت محل کلید"}</button>
+                <div className="mt-2 grid grid-cols-2 gap-2"><div className="rounded-xl border border-amber-100 bg-amber-50 p-2 text-[10.5px]"><b className="block text-amber-700">آخرین نظافت</b>{contract.cleaningDates?.at(-1) || "ثبت نشده"}</div><div className="rounded-xl border border-blue-100 bg-blue-50 p-2 text-[10.5px]"><b className="block text-blue-700">آخرین تعویض روغن موتور</b>{contract.motorOilChangeDates?.at(-1) || "ثبت نشده"}</div></div>
+                <button type="button" onClick={() => { setTriangleKeyEditing(contract); setTriangleKeyLocation(contract.triangleKeyLocation || ""); setTriangleCleaningDates([...(contract.cleaningDates || [])]); setTriangleOilDates([...(contract.motorOilChangeDates || [])]); setTriangleNewCleaning(""); setTriangleNewOil(""); }} className="mt-2 w-full rounded-xl bg-blue-600 py-2.5 text-[12px] font-bold text-white">{contract.triangleKeyLocation ? "ویرایش محل کلید" : "ثبت محل کلید"}</button>
               </div>)}
               {matches.length === 0 && <div className="py-10 text-center text-[12px] text-gray-400">ساختمانی پیدا نشد</div>}
             </div>
@@ -3115,7 +3120,9 @@ export default function TechnicianMobileApp({
           <div className="w-full max-w-[480px] rounded-2xl bg-white p-4" onClick={(event) => event.stopPropagation()}>
             <div className="font-bold text-[14px] text-gray-800">{triangleKeyEditing.building.replace(/^\*\s*/, "")}</div>
             <div className="mt-1 text-[11px] text-gray-500">محل دقیق و قابل فهم کلید نجات را وارد کنید.</div>
-            <textarea autoFocus value={triangleKeyLocation} onChange={(event) => setTriangleKeyLocation(event.target.value)} placeholder="مثلاً داخل جعبه آتش‌نشانی طبقه همکف" className="mt-3 min-h-28 w-full rounded-xl border p-3 text-[13px] outline-none focus:border-blue-500" />
+            <textarea autoFocus value={triangleKeyLocation} onChange={(event) => setTriangleKeyLocation(event.target.value)} placeholder="مثلاً داخل جعبه آتش‌نشانی طبقه همکف" className="mt-3 min-h-20 w-full rounded-xl border p-3 text-[13px] outline-none focus:border-blue-500" />
+            <div className="mt-3 rounded-xl border border-amber-200 p-2"><b className="text-[11px] text-amber-800">تاریخ‌های نظافت</b><div className="mt-1 flex gap-1"><input value={triangleNewCleaning} onChange={(e) => setTriangleNewCleaning(e.target.value)} placeholder="۱۴۰۵/۰۷/۱۵" className="min-w-0 flex-1 rounded-lg border px-2 text-[11px]" /><button type="button" onClick={() => { if (triangleNewCleaning.trim()) { setTriangleCleaningDates([...triangleCleaningDates, triangleNewCleaning.trim().replace(/-/g, "/")]); setTriangleNewCleaning(""); } }} className="rounded-lg bg-amber-600 px-3 py-2 text-white">+</button></div><div className="mt-1 flex flex-wrap gap-1">{triangleCleaningDates.map((d, i) => <button type="button" key={`${d}-${i}`} onClick={() => setTriangleCleaningDates(triangleCleaningDates.filter((_, x) => x !== i))} className="rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-900">{d} ×</button>)}</div></div>
+            <div className="mt-2 rounded-xl border border-blue-200 p-2"><b className="text-[11px] text-blue-800">تاریخ‌های تعویض روغن موتور</b><div className="mt-1 flex gap-1"><input value={triangleNewOil} onChange={(e) => setTriangleNewOil(e.target.value)} placeholder="۱۴۰۵/۰۷/۱۵" className="min-w-0 flex-1 rounded-lg border px-2 text-[11px]" /><button type="button" onClick={() => { if (triangleNewOil.trim()) { setTriangleOilDates([...triangleOilDates, triangleNewOil.trim().replace(/-/g, "/")]); setTriangleNewOil(""); } }} className="rounded-lg bg-blue-600 px-3 py-2 text-white">+</button></div><div className="mt-1 flex flex-wrap gap-1">{triangleOilDates.map((d, i) => <button type="button" key={`${d}-${i}`} onClick={() => setTriangleOilDates(triangleOilDates.filter((_, x) => x !== i))} className="rounded bg-blue-50 px-2 py-1 text-[10px] text-blue-900">{d} ×</button>)}</div></div>
             <div className="mt-3 flex gap-2"><button type="button" onClick={saveKeyLocation} className="flex-1 rounded-xl bg-emerald-600 py-3 text-[12px] font-bold text-white">ذخیره</button><button type="button" onClick={() => setTriangleKeyEditing(null)} className="rounded-xl border px-5 text-[12px]">انصراف</button></div>
           </div>
         </div>}
