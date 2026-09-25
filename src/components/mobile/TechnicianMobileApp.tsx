@@ -51,6 +51,7 @@ import {
   Filter,
   Volume2,
   VolumeX,
+  KeyRound,
 } from "lucide-react";
 import type { Contract } from "../../data";
 import {
@@ -136,7 +137,7 @@ const LS = {
 const MAX_WORK_SESSION_SECONDS = 12 * 60 * 60;
 
 type Job = { contract: Contract; month: MonthService; overdue: boolean };
-type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "offlineService" | "offlineQueue";
+type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "triangleKeys" | "offlineService" | "offlineQueue";
 
 type OfflineServiceDraft = {
   id: string;
@@ -202,6 +203,9 @@ export default function TechnicianMobileApp({
   };
 
   const [screen, setScreen] = useState<Screen>("home");
+  const [triangleKeyQuery, setTriangleKeyQuery] = useState("");
+  const [triangleKeyEditing, setTriangleKeyEditing] = useState<Contract | null>(null);
+  const [triangleKeyLocation, setTriangleKeyLocation] = useState("");
   const [drawer, setDrawer] = useState(false);
   const [androidModal, setAndroidModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -3068,6 +3072,57 @@ export default function TechnicianMobileApp({
     );
   };
 
+  const renderTriangleKeysView = () => {
+    const q = triangleKeyQuery.trim().toLocaleLowerCase("fa");
+    const matches = q.length < 2 ? [] : contracts.filter((contract) =>
+      [contract.building, contract.buildingName, contract.manager, contract.customer, contract.phone, contract.coordinator, contract.coordinatorPhone, contract.no]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase("fa").includes(q))
+    ).slice(0, 40);
+    const saveKeyLocation = () => {
+      if (!triangleKeyEditing) return;
+      appStore.updateContract({ ...triangleKeyEditing, triangleKeyLocation: triangleKeyLocation.trim() || undefined });
+      setTriangleKeyEditing(null);
+      setTriangleKeyLocation("");
+      syncNow();
+      notify("محل کلید سه‌گوش ذخیره شد");
+    };
+    return (
+      <>
+        {header("محل کلید سه‌گوش", () => setScreen("services"))}
+        <div className="p-3 pb-24">
+          <div className="rounded-2xl border border-red-100 bg-white p-3 shadow-sm">
+            <div className="mb-3 flex items-center gap-2 text-[13px] font-bold text-gray-800"><KeyRound size={19} className="text-red-500" /> جستجوی سریع کلید نجات اضطراری</div>
+            <div className="flex items-center gap-2 rounded-xl border bg-gray-50 px-3">
+              <Search size={17} className="text-gray-400" />
+              <input value={triangleKeyQuery} onChange={(event) => setTriangleKeyQuery(event.target.value)} placeholder="نام ساختمان، مشتری یا شماره قرارداد" className="h-12 w-full bg-transparent text-[12px] outline-none" />
+              {triangleKeyQuery && <button type="button" onClick={() => setTriangleKeyQuery("")}><X size={16} className="text-gray-400" /></button>}
+            </div>
+          </div>
+          {q.length < 2 ? <div className="py-12 text-center text-[11.5px] text-gray-400">حداقل دو حرف جستجو کنید؛ فهرست ساختمان‌ها خودکار نمایش داده نمی‌شود.</div> : (
+            <div className="mt-3 space-y-2">
+              {matches.map((contract) => <div key={contract.id} className="rounded-2xl border bg-white p-3 shadow-sm">
+                <div className="font-bold text-[13px] text-gray-800">{contract.building.replace(/^\*\s*/, "")}</div>
+                <div className="mt-1 text-[10.5px] text-gray-500">{contract.manager} · قرارداد {contract.no}</div>
+                <div className={`mt-2 rounded-xl border p-3 text-[12px] ${contract.triangleKeyLocation ? "border-red-100 bg-red-50 text-gray-800" : "border-dashed text-gray-400"}`}><span className="font-bold text-red-500">محل کلید: </span>{contract.triangleKeyLocation || "ثبت نشده"}</div>
+                <button type="button" onClick={() => { setTriangleKeyEditing(contract); setTriangleKeyLocation(contract.triangleKeyLocation || ""); }} className="mt-2 w-full rounded-xl bg-blue-600 py-2.5 text-[12px] font-bold text-white">{contract.triangleKeyLocation ? "ویرایش محل کلید" : "ثبت محل کلید"}</button>
+              </div>)}
+              {matches.length === 0 && <div className="py-10 text-center text-[12px] text-gray-400">ساختمانی پیدا نشد</div>}
+            </div>
+          )}
+        </div>
+        {triangleKeyEditing && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-3" onClick={() => setTriangleKeyEditing(null)}>
+          <div className="w-full max-w-[480px] rounded-2xl bg-white p-4" onClick={(event) => event.stopPropagation()}>
+            <div className="font-bold text-[14px] text-gray-800">{triangleKeyEditing.building.replace(/^\*\s*/, "")}</div>
+            <div className="mt-1 text-[11px] text-gray-500">محل دقیق و قابل فهم کلید نجات را وارد کنید.</div>
+            <textarea autoFocus value={triangleKeyLocation} onChange={(event) => setTriangleKeyLocation(event.target.value)} placeholder="مثلاً داخل جعبه آتش‌نشانی طبقه همکف" className="mt-3 min-h-28 w-full rounded-xl border p-3 text-[13px] outline-none focus:border-blue-500" />
+            <div className="mt-3 flex gap-2"><button type="button" onClick={saveKeyLocation} className="flex-1 rounded-xl bg-emerald-600 py-3 text-[12px] font-bold text-white">ذخیره</button><button type="button" onClick={() => setTriangleKeyEditing(null)} className="rounded-xl border px-5 text-[12px]">انصراف</button></div>
+          </div>
+        </div>}
+      </>
+    );
+  };
+
   const renderBottomNav = () => (
     <div className="fixed inset-x-0 bottom-0 mx-auto flex max-w-[480px] justify-around border-t bg-white py-1.5">
       {[
@@ -3075,6 +3130,7 @@ export default function TechnicianMobileApp({
         ["map", "نقشه", MapIcon],
         ["calendar", "تقویم", CalendarDays],
         ["services", "سرویس‌ها", Briefcase],
+        ["triangleKeys", "کلید سه‌گوش", KeyRound],
       ].map(([k, l, I]: any) => (
         <button
           key={k}
@@ -3394,6 +3450,7 @@ export default function TechnicianMobileApp({
         {screen === "map" && renderMapView()}
         {screen === "calendar" && renderCalendarView()}
         {screen === "services" && renderServicesView()}
+        {screen === "triangleKeys" && renderTriangleKeysView()}
         {screen === "offlineService" && renderOfflineServiceView()}
         {screen === "offlineQueue" && renderOfflineQueueView()}
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { KeyRound, Search, Save, X } from "lucide-react";
+import { KeyRound, Printer, Search, Save, X } from "lucide-react";
 import type { Theme } from "../theme";
 import { appStore, useContracts } from "../store";
 import type { Contract } from "../data";
@@ -28,6 +28,14 @@ export default function TriangleKeyLocationsPage({
       .slice(0, 50);
   }, [contracts, query]);
 
+  const printLocations = () => {
+    const rows = contracts.map((contract, index) => `<tr><td>${index + 1}</td><td>${contract.building.replace(/^\*\s*/, "")}</td><td>${contract.manager || "-"}</td><td>${contract.no}</td><td>${contract.triangleKeyLocation || ""}</td></tr>`).join("");
+    const popup = window.open("", "_blank", "width=1000,height=700");
+    if (!popup) return onShowToast("مرورگر پنجره چاپ را مسدود کرده است");
+    popup.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>جدول محل کلیدهای سه‌گوش</title><style>body{font-family:Tahoma,sans-serif;padding:24px;color:#111}h1{font-size:18px;text-align:center;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #555;padding:8px;text-align:right}th{background:#eee}@page{size:A4 landscape;margin:12mm}</style></head><body><h1>جدول محل کلیدهای سه‌گوش نجات اضطراری</h1><table><thead><tr><th>ردیف</th><th>ساختمان</th><th>مشتری / مسئول</th><th>قرارداد</th><th>محل کلید سه‌گوش</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);
+    popup.document.close();
+  };
+
   const startEdit = (contract: Contract) => {
     setEditing(contract);
     setLocation(contract.triangleKeyLocation || "");
@@ -51,10 +59,13 @@ export default function TriangleKeyLocationsPage({
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-red-600">
             <KeyRound size={23} />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className={`text-base font-bold ${t.text}`}>محل کلید سه‌گوش</h1>
             <p className={`mt-1 text-xs ${t.sub}`}>دسترسی سریع به محل کلید نجات اضطراری ساختمان‌ها</p>
           </div>
+          <button type="button" onClick={printLocations} className="flex items-center gap-2 rounded-lg bg-slate-700 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800">
+            <Printer size={16} /> چاپ جدول
+          </button>
         </div>
 
         <div className={`flex items-center gap-2 rounded-xl border px-3 ${t.input} ${t.border}`}>
