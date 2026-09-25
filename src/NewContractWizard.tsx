@@ -73,6 +73,7 @@ export default function NewContractWizard({
     usage: "",
     postal: "",
     address: "",
+    triangleKeyLocation: "",
     note: "",
   });
   const [c, setC] = useState({ no: "5602", signDate: "1405/05/30", start: "", end: "", desc: "", type: "" });
@@ -130,6 +131,7 @@ export default function NewContractWizard({
         start: c.start,
         end: c.end || "-",
         kind: "general",
+        triangleKeyLocation: b.triangleKeyLocation.trim() || undefined,
       });
       notify("قرارداد با موفقیت ثبت شد");
       return;
@@ -335,6 +337,14 @@ export default function NewContractWizard({
 
                 <Field label="آدرس ساختمان" req className="col-span-3">
                   <input value={b.address} onChange={(e) => setBv("address", e.target.value)} className={inputCls(t)} />
+                </Field>
+                <Field label="محل قرار گرفتن کلید سه‌گوش" className="col-span-3">
+                  <input
+                    value={b.triangleKeyLocation}
+                    onChange={(e) => setBv("triangleKeyLocation", e.target.value)}
+                    placeholder="مثلاً: داخل جعبه آتش‌نشانی طبقه همکف"
+                    className={inputCls(t)}
+                  />
                 </Field>
                 <Field label="توضیحات اضافی" className="col-span-3">
                   <textarea
@@ -568,6 +578,7 @@ export default function NewContractWizard({
                 ["کاربری", b.usage],
                 ["کدپستی", b.postal],
                 ["آدرس", b.address],
+                ["محل کلید سه‌گوش", b.triangleKeyLocation || "ثبت نشده"],
                 ["شماره قرارداد", c.no],
                 ["تاریخ عقد", c.signDate],
                 ["تاریخ شروع", c.start],

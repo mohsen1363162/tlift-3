@@ -69,6 +69,7 @@ export const serviceMenu: MenuGroup[] = [
       "ساختمان ها",
       "خرابی ها",
       "سرویس ها",
+      "محل کلید سه‌گوش",
       "یادآورها",
       "بیمه ها",
       "پرداختی ها",
@@ -266,6 +267,8 @@ export type Contract = {
   cancelDate?: string;
   customer?: string;
   monthlyServiceFee?: number;
+  /** محل نگهداری کلید سه‌گوش نجات اضطراری؛ فقط با ورود دستی مقدار می‌گیرد. */
+  triangleKeyLocation?: string;
 };
 
 export const initialContracts: Contract[] = [];

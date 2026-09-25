@@ -58,6 +58,7 @@ const TechnicianMobileApp = lazy(() => import("./components/mobile/TechnicianMob
 const TechnicianDashboard = lazy(() => import("./components/TechnicianDashboard"));
 const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
+const TriangleKeyLocationsPage = lazy(() => import("./components/TriangleKeyLocationsPage"));
 
 function PageLoader({ label = "در حال بارگذاری…" }: { label?: string }) {
   return (
@@ -95,6 +96,7 @@ type Tab = {
     | "cpanel"
     | "technicianDashboard"
     | "accessManagement"
+    | "triangleKeyLocations"
     | "serviceReport";
   contract?: Contract;
   monthService?: MonthService;
@@ -248,6 +250,7 @@ export default function App() {
       label === "سرویس ها"
     )
       addTab("مدیریت زمانبندی سرویس ها و خرابی ها", "schedule");
+    else if (label === "محل کلید سه‌گوش") addTab("محل کلید سه‌گوش", "triangleKeyLocations");
     else if (label === "سرویسکار و مسئول انجام") addTab("سرویس کار و مسئول انجام", "staff");
     else if (label === "قطعات" || label === "قطعات مصرفی") addTab("قطعه ها", "parts");
     else if (label === "منطقه" || label === "منطقه‌ها" || label === "منطقه ها" || label.includes("منطقه"))
@@ -697,6 +700,8 @@ export default function App() {
               <TechnicianDashboard t={t} />
             ) : current?.kind === "accessManagement" ? (
               <AccessManagementPage t={t} />
+            ) : current?.kind === "triangleKeyLocations" ? (
+              <TriangleKeyLocationsPage t={t} onShowToast={showToast} />
             ) : current?.kind === "zones" ? (
               <ZonesPage t={t} onShowToast={showToast} />
             ) : current?.kind === "csvUpload" ? (
