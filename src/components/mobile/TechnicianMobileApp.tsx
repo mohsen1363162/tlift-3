@@ -36,6 +36,8 @@ import {
   CreditCard,
   Building2,
   ClipboardCheck,
+  ClipboardList,
+  Send,
   Package,
   Search,
   Cloud,
@@ -63,6 +65,8 @@ import {
   useActiveServiceAssignments,
   useCompanyAccessSettings,
   useTechnicianPartDeliveries,
+  useScheduledServices,
+  useStaff,
   MonthService,
   ServiceChecklistStatus,
   ServicePartItem,
@@ -157,7 +161,7 @@ const LS = {
 const MAX_WORK_SESSION_SECONDS = 12 * 60 * 60;
 
 type Job = { contract: Contract; month: MonthService; overdue: boolean };
-type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "triangleKeys" | "technicianParts" | "offlineService" | "offlineQueue";
+type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "triangleKeys" | "technicianParts" | "dailyDispatch" | "myAssignedJobs" | "offlineService" | "offlineQueue";
 
 type OfflineServiceDraft = {
   id: string;
@@ -200,6 +204,8 @@ export default function TechnicianMobileApp({
   const accessSettings = useCompanyAccessSettings();
   const allPartDeliveries = useTechnicianPartDeliveries();
   const myPartDeliveries = allPartDeliveries.filter((item) => item.technicianName === technician.name && item.status === "active");
+  const scheduledServices = useScheduledServices();
+  const staffList = useStaff();
   const checklist = useChecklist();
   const categories = useChecklistCategories();
   const parts = useParts();
@@ -375,7 +381,16 @@ export default function TechnicianMobileApp({
   );
   const [serviceQuery, setServiceQuery] = useState("");
   const [serviceFilter, setServiceFilter] = useState<"all" | "pending" | "done">("all");
+  const [dispatchQuery, setDispatchQuery] = useState("");
+  const [dispatchZone, setDispatchZone] = useState("all");
+  const [dispatchSelected, setDispatchSelected] = useState<string[]>([]);
+  const [dispatchTechnician, setDispatchTechnician] = useState("مجتبی فرهمند");
+  const [dispatchDate, setDispatchDate] = useState(currentJalaliDate);
   const [expandedContractId, setExpandedContractId] = useState<string | null>(null);
+  const dispatchCandidates = useMemo(() => jobs.filter((job, index, all) => !job.month.done && all.findIndex((candidate) => candidate.contract.id === job.contract.id && !candidate.month.done) === index && (!scheduledServices.some((service) => service.contractId === job.contract.id && service.monthId === job.month.id && service.status === "pending"))), [jobs, scheduledServices]);
+  const dispatchZones = useMemo(() => Array.from(new Set(contracts.map((contract) => contract.zone || "بدون منطقه"))).sort(), [contracts]);
+  const visibleDispatchCandidates = dispatchCandidates.filter((job) => (dispatchZone === "all" || (job.contract.zone || "بدون منطقه") === dispatchZone) && (!dispatchQuery.trim() || `${job.contract.building} ${job.contract.manager} ${job.contract.address || ""}`.includes(dispatchQuery.trim())));
+  const myDailyAssignments = scheduledServices.filter((service) => service.technician === technician.name && service.status === "pending").sort((a, b) => a.date.localeCompare(b.date));
 
   /* ------------------------------- map screen states ------------------------------- */
   const contractGeoLocations = useContractGeoLocations();
@@ -1091,6 +1106,8 @@ export default function TechnicianMobileApp({
           { l: "ثبت سرویس آفلاین", i: CloudOff, c: "text-amber-600", go: () => setScreen("offlineService") },
           { l: "صف سرویس‌های آفلاین", i: Cloud, c: "text-emerald-600", badge: offlineDrafts.length || undefined, go: () => setScreen("offlineQueue") },
           { l: "قطعات تحویلی من", i: Package, c: "text-violet-600", badge: myPartDeliveries.length || undefined, go: () => setScreen("technicianParts") },
+          { l: "کارهای واگذارشده من", i: ClipboardList, c: "text-emerald-600", badge: myDailyAssignments.length || undefined, go: () => setScreen("myAssignedJobs") },
+          ...(technician.name === "مرتضی قاسمعلی" ? [{ l: "تقسیم کار روزانه", i: Send, c: "text-blue-600", badge: undefined, go: () => setScreen("dailyDispatch" as Screen) }] : []),
         ].map((b) => (
           <button
             key={b.l}
@@ -3197,6 +3214,27 @@ export default function TechnicianMobileApp({
     );
   };
 
+  const submitDailyDispatch = () => {
+    if (!dispatchSelected.length) return notify("حداقل یک ساختمان را انتخاب کنید");
+    if (dispatchSelected.length > 10) return notify("در هر نوبت حداکثر ۱۰ سرویس قابل واگذاری است");
+    dispatchSelected.forEach((key) => {
+      const [contractId, monthId] = key.split("-").map(Number);
+      const job = jobs.find((item) => item.contract.id === contractId && item.month.id === monthId);
+      if (!job) return;
+      appStore.addScheduledService({ contractId, monthId, assignedBy: technician.name, assignedAt: Date.now(), date: dispatchDate, buildingName: job.contract.building, status: "pending", technician: dispatchTechnician, techCount: 1, zone: job.contract.zone || "بدون منطقه", contractNo: job.contract.no, customerName: job.contract.manager, customerPhone: job.contract.phone, address: job.contract.address, notes: [job.contract.additionalNotes, job.contract.triangleKeyLocation ? `کلید سه‌گوش: ${job.contract.triangleKeyLocation}` : ""].filter(Boolean).join(" — ") });
+    });
+    notify(`${dispatchSelected.length.toLocaleString("fa-IR")} سرویس برای ${dispatchTechnician} ارسال شد`);
+    setDispatchSelected([]);
+  };
+
+  const renderDailyDispatchView = () => (
+    <>{header("تقسیم کار روزانه", () => setScreen("home"))}<div className="p-3 pb-28"><div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 p-3 text-[11px] leading-5 text-blue-900">حداکثر ۱۰ ساختمان را انتخاب کنید؛ کارها بلافاصله در تلیفت همراه سرویس‌کار نمایش داده می‌شوند.</div><div className="grid grid-cols-2 gap-2"><select value={dispatchZone} onChange={e=>setDispatchZone(e.target.value)} className="rounded-xl border bg-white p-2.5 text-[11px]"><option value="all">همه مناطق</option>{dispatchZones.map(zone=><option key={zone}>{zone}</option>)}</select><input value={dispatchDate} onChange={e=>setDispatchDate(normalizeJalaliDate(e.target.value))} className="rounded-xl border bg-white p-2.5 text-center text-[11px]" placeholder="تاریخ"/></div><input value={dispatchQuery} onChange={e=>setDispatchQuery(e.target.value)} className="mt-2 w-full rounded-xl border bg-white p-3 text-[11px]" placeholder="جستجوی ساختمان، مدیر یا آدرس..."/><div className="my-3 flex items-center justify-between"><b className="text-[12px] text-gray-700">انتخاب‌شده: {fa(dispatchSelected.length)} از ۱۰</b><button onClick={()=>setDispatchSelected([])} className="text-[10px] text-red-500">پاک کردن انتخاب</button></div><div className="space-y-2">{visibleDispatchCandidates.map(job=>{const key=`${job.contract.id}-${job.month.id}`;const checked=dispatchSelected.includes(key);return <button key={key} onClick={()=>setDispatchSelected(current=>checked?current.filter(x=>x!==key):current.length<10?[...current,key]:current)} className={`w-full rounded-2xl border p-3 text-right ${checked?"border-blue-500 bg-blue-50":"bg-white"}`}><div className="flex items-start gap-2"><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${checked?"border-blue-600 bg-blue-600 text-white":"border-gray-300"}`}>{checked&&<Check size={13}/>}</span><div><div className="text-[12px] font-bold text-gray-800">{job.contract.building}</div><div className="mt-1 text-[10px] text-gray-500">{job.contract.manager} · {job.contract.zone || "بدون منطقه"}</div><div className="mt-1 line-clamp-2 text-[10px] text-gray-500">{job.contract.address || "آدرس ثبت نشده"}</div>{job.contract.triangleKeyLocation&&<div className="mt-1 text-[10px] text-amber-700">کلید: {job.contract.triangleKeyLocation}</div>}</div></div></button>})}</div></div><div className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-md border-t bg-white p-3"><select value={dispatchTechnician} onChange={e=>setDispatchTechnician(e.target.value)} className="mb-2 w-full rounded-xl border p-2.5 text-xs">{staffList.filter(person=>`${person.first} ${person.last}`.trim()!==technician.name).map(person=>{const name=`${person.first} ${person.last}`.trim();return <option key={person.id} value={name}>{name}</option>})}</select><button onClick={submitDailyDispatch} disabled={!dispatchSelected.length} className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white disabled:opacity-40"><Send size={17} className="ml-2 inline"/>ارسال {fa(dispatchSelected.length)} کار</button></div></>
+  );
+
+  const renderMyAssignedJobsView = () => (
+    <>{header("کارهای واگذارشده من", () => setScreen("home"))}<div className="p-3 pb-24"><div className="space-y-2">{myDailyAssignments.map(service=>{const contract=contracts.find(item=>item.id===service.contractId||item.contractNo===service.contractNo);const job=contract?jobs.find(item=>item.contract.id===contract.id&&(!service.monthId||item.month.id===service.monthId)):undefined;return <button key={service.id} onClick={()=>{if(job){setSelected(job);setScreen("job")}}} className="w-full rounded-2xl border bg-white p-3 text-right shadow-sm"><div className="flex items-center justify-between"><b className="text-[13px] text-gray-800">{service.buildingName}</b><span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] text-blue-700">{service.date}</span></div><div className="mt-1 text-[10px] text-gray-500">{service.zone} · {service.customerName}</div><div className="mt-2 text-[10.5px] leading-5 text-gray-600">{service.address||"آدرس ثبت نشده"}</div>{service.notes&&<div className="mt-2 rounded-lg bg-amber-50 p-2 text-[10px] text-amber-800">{service.notes}</div>}<div className="mt-2 text-[10px] font-bold text-blue-600">واگذارکننده: {service.assignedBy||"مسئول برنامه‌ریزی"}</div></button>})}{!myDailyAssignments.length&&<div className="rounded-2xl border border-dashed bg-white py-16 text-center text-xs text-gray-400">هنوز کاری به شما واگذار نشده است.</div>}</div></div></>
+  );
+
   const renderTechnicianPartsView = () => (
     <>
       {header("قطعات و کالاهای تحویلی من", () => setScreen("home"))}
@@ -3536,6 +3574,8 @@ export default function TechnicianMobileApp({
         {screen === "services" && renderServicesView()}
         {screen === "triangleKeys" && renderTriangleKeysView()}
         {screen === "technicianParts" && renderTechnicianPartsView()}
+        {screen === "dailyDispatch" && renderDailyDispatchView()}
+        {screen === "myAssignedJobs" && renderMyAssignedJobsView()}
         {screen === "offlineService" && renderOfflineServiceView()}
         {screen === "offlineQueue" && renderOfflineQueueView()}
 

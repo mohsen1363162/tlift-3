@@ -376,6 +376,10 @@ export type ActiveServiceAssignment = {
 
 export type ScheduledService = {
   id: string;
+  contractId?: number;
+  monthId?: number;
+  assignedBy?: string;
+  assignedAt?: number;
   date: string; // e.g. "1405-06-01"
   buildingName: string;
   status: "done" | "pending";
@@ -1333,6 +1337,8 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
+    scheduledServices = scheduledServices.map((service) => service.contractId === contractId && service.monthId === monthId ? { ...service, status: "done", actualDate: serviceData.doneDate, lastUpdated: Date.now() } : service);
+    saveStorage("tlift_scheduled_services", scheduledServices);
     if (serviceData.partsList?.length) {
       appStore.consumeTechnicianParts(serviceData.doneBy || serviceData.techs[0] || "", serviceData.partsList);
     }
