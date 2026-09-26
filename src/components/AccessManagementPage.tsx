@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { ShieldCheck, MapPin, Plus, Trash2, Save, Crown, UserCheck } from "lucide-react";
+import { ShieldCheck, MapPin, Plus, Trash2, Save, Crown } from "lucide-react";
 import type { Theme } from "../theme";
-import { appStore, CompanyLeader, useCompanyAccessSettings, useStaff } from "../store";
+import { appStore, CompanyLeader, useCompanyAccessSettings } from "../store";
 
 export default function AccessManagementPage({ t }: { t: Theme }) {
   const settings = useCompanyAccessSettings();
-  const staff = useStaff();
   const [draft, setDraft] = useState(() => ({ ...settings, serviceDispatchers: settings.serviceDispatchers || ["مرتضی قاسمعلی", "محمد حسن رحیمی زاده"] }));
   const addLeader = () => setDraft((s) => ({ ...s, leaders: [...s.leaders, { id: `leader-${Date.now()}`, name: "", phone: "", title: "مدیرعامل", canManageContracts: true, canManageFinancials: false, canAccessSettings: true }] }));
   const update = (id: string, patch: Partial<CompanyLeader>) => setDraft((s) => ({ ...s, leaders: s.leaders.map((x) => x.id === id ? { ...x, ...patch } : x) }));
@@ -20,8 +19,6 @@ export default function AccessManagementPage({ t }: { t: Theme }) {
         <div className="mt-3 flex flex-wrap gap-4 text-xs">{[["canManageContracts","افزودن، ویرایش و حذف قرارداد"],["canManageFinancials","تغییر مبالغ و اطلاعات مالی"],["canAccessSettings","دسترسی به تنظیمات اولیه"]].map(([key,label])=><label key={key} className="flex items-center gap-2"><input type="checkbox" checked={Boolean(leader[key as keyof CompanyLeader])} onChange={e=>update(leader.id,{[key]:e.target.checked})}/>{label}</label>)}</div>
       </div>)}{draft.leaders.length===0&&<div className={`py-8 text-center text-xs ${t.sub}`}>هنوز مدیری تعریف نشده است</div>}</div>
     </section>
-
-    <section className={`mt-4 rounded-2xl border p-4 ${t.panel} ${t.border}`}><h2 className="flex items-center gap-2 font-bold"><UserCheck className="text-blue-500" size={18}/> مسئولان مجاز تقسیم کار روزانه</h2><p className={`mt-1 text-xs ${t.sub}`}>هر روز می‌توانید یک یا چند نفر را مجاز کنید؛ فقط افراد انتخاب‌شده صفحه «تقسیم کار روزانه» را در تلیفت همراه می‌بینند.</p><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{staff.filter(person=>person.service).map(person=>{const name=`${person.first} ${person.last}`.trim();const checked=(draft.serviceDispatchers||[]).includes(name);return <label key={person.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-xs ${t.border} ${checked?"bg-blue-500/10 ring-1 ring-blue-400":""}`}><input type="checkbox" checked={checked} onChange={()=>setDraft(current=>({...current,serviceDispatchers:checked?(current.serviceDispatchers||[]).filter(item=>item!==name):[...(current.serviceDispatchers||[]),name]}))}/><span className="font-bold">{name}</span><span className={`mr-auto ${checked?"text-blue-500":t.sub}`}>{checked?"مجاز":"غیرفعال"}</span></label>})}</div></section>
 
     <section className={`mt-4 rounded-2xl border p-4 ${t.panel} ${t.border}`}><h2 className="flex items-center gap-2 font-bold"><MapPin className="text-blue-500" size={18}/> سیاست کنترل GPS سرویس‌ها</h2><div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl bg-blue-500/10 p-4"><div><b className="text-sm">الزام حضور در محل برای شروع سرویس</b><p className={`mt-1 text-xs ${t.sub}`}>در خرابی GPS می‌توانید موقتاً خاموش کنید و بعداً دوباره فعال نمایید.</p></div><button onClick={()=>setDraft(s=>({...s,gpsRequired:!s.gpsRequired}))} className={`rounded-full px-5 py-2 text-xs font-bold text-white ${draft.gpsRequired?"bg-emerald-600":"bg-gray-500"}`}>{draft.gpsRequired?"GPS فعال است":"GPS غیرفعال است"}</button></div><label className="mt-4 block text-xs">شعاع مجاز شروع سرویس (متر)<input type="number" min={50} max={2000} value={draft.gpsRadiusMeters} onChange={e=>setDraft(s=>({...s,gpsRadiusMeters:Math.max(50,Number(e.target.value)||300)}))} className={`mt-1 block w-48 rounded-lg border p-2 ${t.input}`}/></label></section>
 

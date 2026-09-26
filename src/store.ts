@@ -347,7 +347,7 @@ const INITIAL_MARKETING_ITEMS: MarketingItem[] = [
 ];
 
 export type CompanyLeader = { id: string; name: string; phone: string; title: "مدیرعامل" | "رئیس شرکت" | "مدیر"; canManageContracts: boolean; canManageFinancials: boolean; canAccessSettings: boolean };
-export type CompanyAccessSettings = { gpsRequired: boolean; gpsRadiusMeters: number; leaders: CompanyLeader[]; serviceDispatchers?: string[] };
+export type CompanyAccessSettings = { gpsRequired: boolean; gpsRadiusMeters: number; leaders: CompanyLeader[]; serviceDispatchers?: string[]; dailyDispatcherName?: string; dailyDispatcherDate?: string };
 export type ContractGeoLocation = { contractId: number; latitude: number; longitude: number; accuracy?: number; updatedAt: number };
 
 export type TechnicianPartDelivery = {
