@@ -211,6 +211,7 @@ export default function TechnicianMobileApp({
   const parts = useParts();
   const sync = useSyncState();
   const [syncBusy, setSyncBusy] = useState(false);
+  const canDispatchServices = (accessSettings.serviceDispatchers || ["مرتضی قاسمعلی", "محمد حسن رحیمی زاده"]).includes(technician.name);
   const browserHasInternet = typeof navigator === "undefined" ? true : navigator.onLine;
   const syncServerUnavailable = browserHasInternet && !sync.isManualOffline && (sync.status === "offline" || sync.status === "error");
   const isOffline = !browserHasInternet || sync.isManualOffline || syncServerUnavailable;
@@ -1107,7 +1108,7 @@ export default function TechnicianMobileApp({
           { l: "صف سرویس‌های آفلاین", i: Cloud, c: "text-emerald-600", badge: offlineDrafts.length || undefined, go: () => setScreen("offlineQueue") },
           { l: "قطعات تحویلی من", i: Package, c: "text-violet-600", badge: myPartDeliveries.length || undefined, go: () => setScreen("technicianParts") },
           { l: "کارهای واگذارشده من", i: ClipboardList, c: "text-emerald-600", badge: myDailyAssignments.length || undefined, go: () => setScreen("myAssignedJobs") },
-          ...(technician.name === "مرتضی قاسمعلی" ? [{ l: "تقسیم کار روزانه", i: Send, c: "text-blue-600", badge: undefined, go: () => setScreen("dailyDispatch" as Screen) }] : []),
+          ...(canDispatchServices ? [{ l: "تقسیم کار روزانه", i: Send, c: "text-blue-600", badge: undefined, go: () => setScreen("dailyDispatch" as Screen) }] : []),
         ].map((b) => (
           <button
             key={b.l}

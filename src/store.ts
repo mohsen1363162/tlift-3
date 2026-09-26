@@ -347,7 +347,7 @@ const INITIAL_MARKETING_ITEMS: MarketingItem[] = [
 ];
 
 export type CompanyLeader = { id: string; name: string; phone: string; title: "مدیرعامل" | "رئیس شرکت" | "مدیر"; canManageContracts: boolean; canManageFinancials: boolean; canAccessSettings: boolean };
-export type CompanyAccessSettings = { gpsRequired: boolean; gpsRadiusMeters: number; leaders: CompanyLeader[] };
+export type CompanyAccessSettings = { gpsRequired: boolean; gpsRadiusMeters: number; leaders: CompanyLeader[]; serviceDispatchers?: string[] };
 export type ContractGeoLocation = { contractId: number; latitude: number; longitude: number; accuracy?: number; updatedAt: number };
 
 export type TechnicianPartDelivery = {
@@ -803,7 +803,7 @@ let scheduledServices: ScheduledService[] = loadStorage<ScheduledService[]>("tli
 let activeServiceAssignments: ActiveServiceAssignment[] = loadStorage<ActiveServiceAssignment[]>("tlift_active_service_assignments_v1", []);
 let technicianPartDeliveries: TechnicianPartDelivery[] = loadStorage<TechnicianPartDelivery[]>("tlift_technician_part_deliveries_v1", []).map((item) => ({ ...item, usedQuantity: item.usedQuantity || 0, remainingQuantity: item.remainingQuantity ?? item.quantity, status: item.status || "active" }));
 let contractGeoLocations: ContractGeoLocation[] = loadStorage<ContractGeoLocation[]>("tlift_contract_geo_locations_v1", []);
-let companyAccessSettings: CompanyAccessSettings = loadStorage<CompanyAccessSettings>("tlift_company_access_settings_v1", { gpsRequired: true, gpsRadiusMeters: 300, leaders: [] });
+let companyAccessSettings: CompanyAccessSettings = loadStorage<CompanyAccessSettings>("tlift_company_access_settings_v1", { gpsRequired: true, gpsRadiusMeters: 300, leaders: [], serviceDispatchers: ["مرتضی قاسمعلی", "محمد حسن رحیمی زاده"] });
 let zones: ZoneItem[] = loadStorage<ZoneItem[]>("tlift_zones_v2", INITIAL_ZONES);
 let checklistItems: ChecklistItem[] = loadStorage<ChecklistItem[]>("tlift_checklist_v1", INITIAL_CHECKLIST);
 let checklistCategories: string[] = loadStorage<string[]>("tlift_checklist_categories_v1", INITIAL_CHECKLIST_CATEGORIES);
