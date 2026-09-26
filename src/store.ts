@@ -353,10 +353,17 @@ export type ContractGeoLocation = { contractId: number; latitude: number; longit
 export type TechnicianPartDelivery = {
   id: string;
   technicianName: string;
+  technicianPhone?: string;
+  partId?: number;
+  partCode?: string;
   partName: string;
+  unit?: string;
   quantity: number;
+  usedQuantity: number;
+  remainingQuantity: number;
   deliveredAt: string;
   note?: string;
+  status: "active" | "consumed" | "returned";
 };
 
 export type ActiveServiceAssignment = {
@@ -790,7 +797,7 @@ let staff: Staff[] = loadStorage<Staff[]>("tlift_staff", initialStaff);
 let marketingItems: MarketingItem[] = loadStorage<MarketingItem[]>("tlift_marketing_items", INITIAL_MARKETING_ITEMS);
 let scheduledServices: ScheduledService[] = loadStorage<ScheduledService[]>("tlift_scheduled_services", INITIAL_SCHEDULED_SERVICES);
 let activeServiceAssignments: ActiveServiceAssignment[] = loadStorage<ActiveServiceAssignment[]>("tlift_active_service_assignments_v1", []);
-let technicianPartDeliveries: TechnicianPartDelivery[] = loadStorage<TechnicianPartDelivery[]>("tlift_technician_part_deliveries_v1", []);
+let technicianPartDeliveries: TechnicianPartDelivery[] = loadStorage<TechnicianPartDelivery[]>("tlift_technician_part_deliveries_v1", []).map((item) => ({ ...item, usedQuantity: item.usedQuantity || 0, remainingQuantity: item.remainingQuantity ?? item.quantity, status: item.status || "active" }));
 let contractGeoLocations: ContractGeoLocation[] = loadStorage<ContractGeoLocation[]>("tlift_contract_geo_locations_v1", []);
 let companyAccessSettings: CompanyAccessSettings = loadStorage<CompanyAccessSettings>("tlift_company_access_settings_v1", { gpsRequired: true, gpsRadiusMeters: 300, leaders: [] });
 let zones: ZoneItem[] = loadStorage<ZoneItem[]>("tlift_zones_v2", INITIAL_ZONES);
@@ -1326,6 +1333,9 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
+    if (serviceData.partsList?.length) {
+      appStore.consumeTechnicianParts(serviceData.doneBy || serviceData.techs[0] || "", serviceData.partsList);
+    }
 
     // ثبت در لیست کارهای ثبت‌شده آفلاین در صورت عدم اتصال
     const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -1666,7 +1676,7 @@ export const appStore = {
   // TECHNICIAN PART DELIVERIES
   getTechnicianPartDeliveries: () => technicianPartDeliveries,
   addTechnicianPartDelivery: (delivery: Omit<TechnicianPartDelivery, "id">) => {
-    const item = { ...delivery, id: `delivery-${Date.now()}` };
+    const item = { ...delivery, id: `delivery-${Date.now()}`, usedQuantity: delivery.usedQuantity || 0, remainingQuantity: delivery.remainingQuantity ?? delivery.quantity, status: delivery.status || "active" } as TechnicianPartDelivery;
     technicianPartDeliveries = [item, ...technicianPartDeliveries];
     saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
     notifyListeners();
@@ -1674,6 +1684,20 @@ export const appStore = {
   },
   removeTechnicianPartDelivery: (id: string) => {
     technicianPartDeliveries = technicianPartDeliveries.filter((item) => item.id !== id);
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
+    notifyListeners();
+  },
+  consumeTechnicianParts: (technicianName: string, usedParts: ServicePartItem[]) => {
+    usedParts.forEach((used) => {
+      let needed = Number(used.qty || 0);
+      technicianPartDeliveries = technicianPartDeliveries.map((delivery) => {
+        if (needed <= 0 || delivery.technicianName !== technicianName || delivery.status !== "active" || (delivery.partName !== used.name && delivery.partCode !== used.code)) return delivery;
+        const take = Math.min(needed, delivery.remainingQuantity);
+        needed -= take;
+        const remainingQuantity = delivery.remainingQuantity - take;
+        return { ...delivery, usedQuantity: delivery.usedQuantity + take, remainingQuantity, status: remainingQuantity <= 0 ? "consumed" : "active" };
+      });
+    });
     saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
     notifyListeners();
   },

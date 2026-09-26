@@ -62,6 +62,7 @@ import {
   useChecklistCategories,
   useActiveServiceAssignments,
   useCompanyAccessSettings,
+  useTechnicianPartDeliveries,
   MonthService,
   ServiceChecklistStatus,
   ServicePartItem,
@@ -156,7 +157,7 @@ const LS = {
 const MAX_WORK_SESSION_SECONDS = 12 * 60 * 60;
 
 type Job = { contract: Contract; month: MonthService; overdue: boolean };
-type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "triangleKeys" | "offlineService" | "offlineQueue";
+type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "triangleKeys" | "technicianParts" | "offlineService" | "offlineQueue";
 
 type OfflineServiceDraft = {
   id: string;
@@ -197,6 +198,8 @@ export default function TechnicianMobileApp({
   const contracts = useContracts();
   const activeServiceAssignments = useActiveServiceAssignments();
   const accessSettings = useCompanyAccessSettings();
+  const allPartDeliveries = useTechnicianPartDeliveries();
+  const myPartDeliveries = allPartDeliveries.filter((item) => item.technicianName === technician.name && item.status === "active");
   const checklist = useChecklist();
   const categories = useChecklistCategories();
   const parts = useParts();
@@ -1087,6 +1090,7 @@ export default function TechnicianMobileApp({
           { l: "ثبت سرویس", i: Wrench, c: "text-blue-600", go: () => setScreen("services") },
           { l: "ثبت سرویس آفلاین", i: CloudOff, c: "text-amber-600", go: () => setScreen("offlineService") },
           { l: "صف سرویس‌های آفلاین", i: Cloud, c: "text-emerald-600", badge: offlineDrafts.length || undefined, go: () => setScreen("offlineQueue") },
+          { l: "قطعات تحویلی من", i: Package, c: "text-violet-600", badge: myPartDeliveries.length || undefined, go: () => setScreen("technicianParts") },
         ].map((b) => (
           <button
             key={b.l}
@@ -3193,6 +3197,16 @@ export default function TechnicianMobileApp({
     );
   };
 
+  const renderTechnicianPartsView = () => (
+    <>
+      {header("قطعات و کالاهای تحویلی من", () => setScreen("home"))}
+      <div className="p-3 pb-24">
+        <div className="mb-3 rounded-2xl border border-violet-100 bg-violet-50 p-3 text-[11px] leading-5 text-violet-900">این فهرست موجودی امانی نزد شماست. با ثبت مصرف قطعه در گزارش سرویس، مقدار مصرف‌شده خودکار از باقیمانده کم می‌شود.</div>
+        <div className="space-y-2">{myPartDeliveries.map((delivery) => <div key={delivery.id} className="rounded-2xl border bg-white p-3 shadow-sm"><div className="flex items-start justify-between"><div><div className="text-[13px] font-bold text-gray-800">{delivery.partName}</div><div className="mt-1 text-[10px] text-gray-500">کد {delivery.partCode || "—"} · تحویل {delivery.deliveredAt}</div></div><span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">{fa(delivery.remainingQuantity)} {delivery.unit || "عدد"}</span></div><div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px]"><div className="rounded-lg bg-blue-50 p-2 text-blue-700"><b className="block text-sm">{fa(delivery.quantity)}</b>تحویل‌شده</div><div className="rounded-lg bg-amber-50 p-2 text-amber-700"><b className="block text-sm">{fa(delivery.usedQuantity)}</b>مصرف‌شده</div><div className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><b className="block text-sm">{fa(delivery.remainingQuantity)}</b>باقیمانده</div></div>{delivery.note && <div className="mt-2 rounded-lg bg-gray-50 p-2 text-[10.5px] text-gray-600">{delivery.note}</div>}</div>)}{myPartDeliveries.length === 0 && <div className="rounded-2xl border border-dashed bg-white py-14 text-center text-[12px] text-gray-400">در حال حاضر قطعه‌ای به نام شما تحویل نشده است.</div>}</div>
+      </div>
+    </>
+  );
+
   const renderBottomNav = () => (
     <div className="fixed inset-x-0 bottom-0 mx-auto flex max-w-[480px] justify-around border-t bg-white py-1.5">
       {[
@@ -3521,6 +3535,7 @@ export default function TechnicianMobileApp({
         {screen === "calendar" && renderCalendarView()}
         {screen === "services" && renderServicesView()}
         {screen === "triangleKeys" && renderTriangleKeysView()}
+        {screen === "technicianParts" && renderTechnicianPartsView()}
         {screen === "offlineService" && renderOfflineServiceView()}
         {screen === "offlineQueue" && renderOfflineQueueView()}
 

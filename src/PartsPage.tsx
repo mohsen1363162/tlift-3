@@ -1,279 +1,41 @@
 import { useMemo, useState } from "react";
-import {
-  MoreVertical,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Pencil,
-  Trash2,
-  Package,
-} from "lucide-react";
+import { Package, Plus, Truck, Users } from "lucide-react";
 import type { Theme } from "./theme";
-import { Part, initialParts } from "./data";
-import TableToolbar from "./components/TableToolbar";
-import ColumnSettingsDrawer, { ColumnDef } from "./components/ColumnSettingsDrawer";
-import PrintTableModal from "./components/PrintTableModal";
-import { exportToExcel } from "./utils/exportUtils";
-
-const PARTS_COLUMNS: ColumnDef[] = [
-  { key: "code", title: "کد قطعه", visible: true },
-  { key: "name", title: "نام قطعه", visible: true },
-  { key: "category", title: "دسته‌بندی", visible: true },
-  { key: "unit", title: "واحد", visible: true },
-  { key: "stock", title: "موجودی", visible: true },
-  { key: "price", title: "قیمت واحد (تومان)", visible: true },
-];
+import { partsApi, useParts, UNITS } from "./partsStore";
+import { appStore, useStaff, useTechnicianPartDeliveries } from "./store";
+import NumberStepper from "./components/NumberStepper";
 
 export default function PartsPage({ t }: { t: Theme }) {
-  const [parts, setParts] = useState<Part[]>(initialParts);
+  const parts = useParts();
+  const staff = useStaff();
+  const deliveries = useTechnicianPartDeliveries();
   const [q, setQ] = useState("");
-  const [cat] = useState("all");
-  const [rowMenu, setRowMenu] = useState<{ id: number; x: number; y: number } | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  // Drawers and print
-  const [columns, setColumns] = useState<ColumnDef[]>(PARTS_COLUMNS);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-
-  const notify = (m: string) => {
-    setToast(m);
-    setTimeout(() => setToast(null), 2200);
+  const [modal, setModal] = useState<"part" | "delivery" | "stock" | null>(null);
+  const [selectedPartId, setSelectedPartId] = useState<number>(parts[0]?.id || 0);
+  const [selectedStaffId, setSelectedStaffId] = useState<number>(staff[0]?.id || 0);
+  const [quantity, setQuantity] = useState(1);
+  const [note, setNote] = useState("");
+  const [stockQuantity, setStockQuantity] = useState(1);
+  const [partForm, setPartForm] = useState({ code: "", name: "", unit: "عدد", price: 0 });
+  const [toast, setToast] = useState("");
+  const notify = (message: string) => { setToast(message); setTimeout(() => setToast(""), 2500); };
+  const list = useMemo(() => parts.filter((part) => !q.trim() || `${part.name} ${part.code}`.toLowerCase().includes(q.trim().toLowerCase())), [parts, q]);
+  const selectedPart = parts.find((part) => part.id === selectedPartId);
+  const selectedStaff = staff.find((person) => person.id === selectedStaffId);
+  const deliver = () => {
+    if (!selectedPart || !selectedStaff) return notify("قطعه و سرویس‌کار را انتخاب کنید");
+    if (quantity <= 0 || selectedPart.stock < quantity) return notify("موجودی انبار برای این تحویل کافی نیست");
+    if (!partsApi.adjustStock(selectedPart.id, -quantity)) return notify("کسر موجودی انجام نشد");
+    appStore.addTechnicianPartDelivery({ technicianName: `${selectedStaff.first} ${selectedStaff.last}`.trim(), technicianPhone: selectedStaff.phone, partId: selectedPart.id, partCode: selectedPart.code, partName: selectedPart.name, unit: selectedPart.unit, quantity, usedQuantity: 0, remainingQuantity: quantity, deliveredAt: new Date().toLocaleDateString("fa-IR"), note, status: "active" });
+    setModal(null); setQuantity(1); setNote(""); notify("قطعه تحویل شد و از موجودی انبار کسر گردید");
   };
-
-  const handleToggleColumn = (key: string) => {
-    setColumns((prev) =>
-      prev.map((c) => (c.key === key ? { ...c, visible: !c.visible } : c))
-    );
-  };
-
-  const list = useMemo(() => {
-    let l = parts;
-    if (cat !== "all") l = l.filter((p) => p.category === cat);
-    if (q.trim()) {
-      const s = q.trim().toLowerCase();
-      l = l.filter((p) => p.name.toLowerCase().includes(s) || p.code.toLowerCase().includes(s));
-    }
-    return l;
-  }, [parts, cat, q]);
-
-  const handleExportExcel = () => {
-    exportToExcel(
-      list as unknown as Record<string, unknown>[],
-      columns
-        .filter((c) => c.visible)
-        .map((c) => ({
-          key: c.key,
-          title: c.title,
-          render: (item: Record<string, unknown>) => {
-            if (c.key === "price") return ((item.price as number) || 0).toLocaleString("fa-IR");
-            if (c.key === "stock") return ((item.stock as number) || 0).toLocaleString("fa-IR");
-            return item[c.key] ?? "";
-          },
-        })),
-      "لیست_قطعات_انبار"
-    );
-    notify("فایل اکسل قطعات با موفقیت دانلود شد");
-  };
-
-  return (
-    <div className="relative flex h-full min-h-0 flex-col">
-      {/* 5-button Toolbar */}
-      <TableToolbar
-        searchQuery={q}
-        onSearchChange={setQ}
-        searchPlaceholder="جستجو در انبار قطعات و تجهیزات..."
-        onOpenFilter={() => notify("فیلتر دسته‌بندی از نوار بالا در دسترس است")}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onRefresh={() => notify("موجودی انبار قطعات به‌روز شد")}
-        onPrint={() => setIsPrintModalOpen(true)}
-        onExportExcel={handleExportExcel}
-        hasActiveFilters={cat !== "all"}
-        t={t}
-      >
-        <div className="flex-1" />
-        <button
-          type="button"
-          onClick={() => notify("فرم ثبت قطعه جدید باز شد")}
-          className="flex items-center gap-1 rounded bg-violet-600 px-3 py-1.5 text-[12.5px] text-white hover:bg-violet-700 shadow-sm transition"
-        >
-          <Package size={14} /> تعریف قطعه جدید
-        </button>
-      </TableToolbar>
-
-      {/* Table */}
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full text-[12.5px]">
-          <thead className={`${t.head} ${t.sub}`}>
-            <tr>
-              <th className="w-12 px-3 py-2.5 text-right font-normal">ردیف</th>
-              {columns
-                .filter((c) => c.visible)
-                .map((col) => (
-                  <th key={col.key} className="px-3 py-2.5 text-right font-normal">
-                    {col.title}
-                  </th>
-                ))}
-              <th className="w-10" />
-            </tr>
-          </thead>
-          <tbody className={t.text}>
-            {list.map((p, i) => (
-              <tr key={p.id} className={`border-b ${t.border} ${t.row}`}>
-                <td className="px-3 py-3 font-mono text-zinc-400">{i + 1}</td>
-                {columns
-                  .filter((col) => col.visible)
-                  .map((col) => {
-                    if (col.key === "code") {
-                      return <td key={col.key} className="px-3 py-3 font-mono text-violet-400">{p.code}</td>;
-                    }
-                    if (col.key === "name") {
-                      return <td key={col.key} className="px-3 py-3 font-medium">{p.name}</td>;
-                    }
-                    if (col.key === "category") {
-                      return (
-                        <td key={col.key} className="px-3 py-3">
-                          <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px]">
-                            {p.category}
-                          </span>
-                        </td>
-                      );
-                    }
-                    if (col.key === "unit") {
-                      return <td key={col.key} className="px-3 py-3">{p.unit}</td>;
-                    }
-                    if (col.key === "stock") {
-                      return (
-                        <td key={col.key} className="px-3 py-3 font-mono font-semibold">
-                          <span className={p.stock <= 5 ? "text-red-400" : "text-emerald-400"}>
-                            {p.stock.toLocaleString("fa-IR")}
-                          </span>
-                        </td>
-                      );
-                    }
-                    if (col.key === "price") {
-                      return (
-                        <td key={col.key} className="px-3 py-3 font-mono">
-                          {p.price.toLocaleString("fa-IR")}
-                        </td>
-                      );
-                    }
-                    return (
-                      <td key={col.key} className="px-3 py-3">
-                        {String((p as unknown as Record<string, unknown>)[col.key] || "-")}
-                      </td>
-                    );
-                  })}
-                <td className="px-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                      setRowMenu(rowMenu?.id === p.id ? null : { id: p.id, x: r.left, y: r.bottom });
-                    }}
-                    className={`rounded p-1 ${t.hover} ${t.sub}`}
-                  >
-                    <MoreVertical size={15} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {list.length === 0 && (
-              <tr>
-                <td colSpan={columns.filter((c) => c.visible).length + 2} className={`py-10 text-center ${t.sub}`}>
-                  موردی یافت نشد
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Footer */}
-      <div className={`flex items-center justify-between border-t ${t.border} px-3 py-2 text-[12px] ${t.text}`}>
-        <div className={`flex items-center gap-1 rounded border px-2 py-1 ${t.border} ${t.sub}`}>
-          <ChevronDown size={13} /> <span>20 / صفحه</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <ChevronRight size={15} className={t.sub} />
-          <span className="h-6 w-6 rounded bg-violet-600 text-center leading-6 text-white font-semibold text-xs">1</span>
-          <ChevronLeft size={15} className={t.sub} />
-        </div>
-        <span className={t.sub}>{list.length.toLocaleString("fa-IR")} مورد پیدا شد</span>
-      </div>
-
-      {/* Drawers & Modals */}
-      <ColumnSettingsDrawer
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        columns={columns}
-        onToggleColumn={handleToggleColumn}
-        onSave={() => notify("تنظیمات ستون‌ها اعمال شد")}
-        t={t}
-      />
-
-      <PrintTableModal
-        isOpen={isPrintModalOpen}
-        onClose={() => setIsPrintModalOpen(false)}
-        title="لیست موجودی انبار قطعات و تجهیزات آسانسور"
-        data={list as unknown as Record<string, unknown>[]}
-        columns={columns
-          .filter((c) => c.visible)
-          .map((c) => ({
-            key: c.key,
-            title: c.title,
-            render: (item: Record<string, unknown>) => {
-              if (c.key === "price") return ((item.price as number) || 0).toLocaleString("fa-IR") + " تومان";
-              if (c.key === "stock") return ((item.stock as number) || 0).toLocaleString("fa-IR");
-              return (item[c.key] as string) ?? "-";
-            },
-          }))}
-        t={t}
-      />
-
-      {rowMenu &&
-        (() => {
-          const p = parts.find((x) => x.id === rowMenu.id)!;
-          return (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setRowMenu(null)} />
-              <div
-                style={{ top: rowMenu.y + 2, left: rowMenu.x }}
-                className={`fixed z-50 w-[160px] rounded border py-1 shadow-2xl ${t.border} ${
-                  t.dark ? "bg-[#232323]" : "bg-white"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRowMenu(null);
-                    notify("ویرایش قطعه");
-                  }}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-[12.5px] ${t.hover} ${t.text}`}
-                >
-                  <Pencil size={14} className={t.sub} /> ویرایش
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setParts(parts.filter((x) => x.id !== p.id));
-                    setRowMenu(null);
-                    notify("قطعه حذف شد");
-                  }}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-[12.5px] text-red-400 ${t.hover}`}
-                >
-                  <Trash2 size={14} /> حذف
-                </button>
-              </div>
-            </>
-          );
-        })()}
-
-      {toast && (
-        <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded bg-neutral-800 border border-neutral-700 px-4 py-2 text-[12.5px] text-white shadow-xl">
-          {toast}
-        </div>
-      )}
+  return <div className="relative flex h-full min-h-0 flex-col p-4">
+    <div className="mb-4 flex flex-wrap items-center gap-2"><div className={`flex h-10 min-w-60 flex-1 items-center rounded-xl border px-3 ${t.input} ${t.border}`}><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی نام یا کد کالا..." className="w-full bg-transparent text-sm outline-none"/></div><button onClick={() => setModal("stock")} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white"><Plus size={15} className="ml-1 inline"/> افزایش موجودی</button><button onClick={() => setModal("delivery")} className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white"><Truck size={15} className="ml-1 inline"/> تحویل به سرویس‌کار</button><button onClick={() => setModal("part")} className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white"><Package size={15} className="ml-1 inline"/> تعریف کالا</button></div>
+    <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1fr_390px]">
+      <div className={`overflow-auto rounded-xl border ${t.border}`}><table className="w-full text-xs"><thead className={t.head}><tr>{["کد","نام کالا","واحد","موجودی انبار","قیمت واحد"].map(x=><th key={x} className="p-3 text-right">{x}</th>)}</tr></thead><tbody>{list.map(part=><tr key={part.id} className={`border-t ${t.border}`}><td className="p-3 text-violet-500">{part.code}</td><td className={`p-3 font-bold ${t.text}`}>{part.name}</td><td className={`p-3 ${t.sub}`}>{part.unit}</td><td className={`p-3 text-lg font-black ${part.stock <= (part.minimumStock || 0) ? "text-red-500" : "text-emerald-500"}`}>{part.stock.toLocaleString("fa-IR")}</td><td className={`p-3 ${t.text}`}>{part.price.toLocaleString("fa-IR")} ریال</td></tr>)}</tbody></table></div>
+      <div className={`overflow-auto rounded-xl border p-3 ${t.border}`}><h3 className={`mb-3 flex items-center gap-2 text-sm font-bold ${t.text}`}><Users size={18} className="text-blue-500"/> امانت و موجودی نزد همکاران</h3><div className="space-y-2">{deliveries.filter(d=>d.status==="active").map(d=><div key={d.id} className={`rounded-xl border p-3 ${t.border}`}><div className={`font-bold ${t.text}`}>{d.partName}</div><div className={`mt-1 text-xs ${t.sub}`}>{d.technicianName} · تحویل {d.deliveredAt}</div><div className="mt-2 grid grid-cols-3 gap-1 text-center text-[10px]"><span className="rounded bg-blue-500/10 p-1 text-blue-500">تحویل: {d.quantity}</span><span className="rounded bg-amber-500/10 p-1 text-amber-500">مصرف: {d.usedQuantity}</span><span className="rounded bg-emerald-500/10 p-1 text-emerald-500">باقی: {d.remainingQuantity}</span></div></div>)}{deliveries.filter(d=>d.status==="active").length===0&&<div className={`py-10 text-center text-xs ${t.sub}`}>قطعه‌ای نزد سرویس‌کاران نیست</div>}</div></div>
     </div>
-  );
+    {modal && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={()=>setModal(null)}><div className={`w-full max-w-lg rounded-2xl border p-5 ${t.panel} ${t.border}`} onClick={e=>e.stopPropagation()}><h2 className={`mb-4 font-bold ${t.text}`}>{modal==="delivery"?"تحویل کالا به سرویس‌کار":modal==="stock"?"افزایش موجودی انبار":"تعریف کالای جدید"}</h2>{modal==="part"?<div className="space-y-3"><input value={partForm.code} onChange={e=>setPartForm({...partForm,code:e.target.value})} placeholder="کد کالا" className={`w-full rounded-xl border p-3 ${t.input}`}/><input value={partForm.name} onChange={e=>setPartForm({...partForm,name:e.target.value})} placeholder="نام کالا" className={`w-full rounded-xl border p-3 ${t.input}`}/><select value={partForm.unit} onChange={e=>setPartForm({...partForm,unit:e.target.value})} className={`w-full rounded-xl border p-3 ${t.input}`}>{UNITS.map(u=><option key={u}>{u}</option>)}</select><input inputMode="numeric" value={partForm.price||""} onChange={e=>setPartForm({...partForm,price:Number(e.target.value.replace(/\D/g,""))})} placeholder="قیمت واحد ریال" className={`w-full rounded-xl border p-3 ${t.input}`}/><button onClick={()=>{if(!partForm.name)return;partsApi.add({...partForm,alias:"",brand:"",country:"",desc:"",consumable:true,stock:0,minimumStock:0});setModal(null)}} className="w-full rounded-xl bg-violet-600 py-3 font-bold text-white">ذخیره کالا</button></div>:<div className="space-y-3"><select value={selectedPartId} onChange={e=>setSelectedPartId(Number(e.target.value))} className={`w-full rounded-xl border p-3 ${t.input}`}>{parts.map(p=><option key={p.id} value={p.id}>{p.name} — موجودی {p.stock}</option>)}</select>{modal==="delivery"&&<select value={selectedStaffId} onChange={e=>setSelectedStaffId(Number(e.target.value))} className={`w-full rounded-xl border p-3 ${t.input}`}>{staff.map(s=><option key={s.id} value={s.id}>{`${s.first} ${s.last}`.trim()}</option>)}</select>}<div className="flex justify-center"><NumberStepper value={modal==="delivery"?quantity:stockQuantity} onChange={modal==="delivery"?setQuantity:setStockQuantity} min={1}/></div>{modal==="delivery"&&<textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="توضیحات تحویل" className={`w-full rounded-xl border p-3 ${t.input}`}/>}<button onClick={modal==="delivery"?deliver:()=>{if(selectedPart&&partsApi.adjustStock(selectedPart.id,stockQuantity)){setModal(null);notify("موجودی افزایش یافت")}}} className="w-full rounded-xl bg-emerald-600 py-3 font-bold text-white">ثبت نهایی</button></div>}</div></div>}
+    {toast&&<div className="fixed bottom-16 left-1/2 z-[70] -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-2 text-xs text-white">{toast}</div>}
+  </div>;
 }

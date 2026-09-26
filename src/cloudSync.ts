@@ -405,10 +405,11 @@ export async function flushAll(): Promise<boolean> {
 
 // ---- pull ----
 type Applier = (key: string, data: unknown) => void;
-let applier: Applier | null = null;
+const appliers = new Set<Applier>();
 
 export function registerApplier(fn: Applier) {
-  applier = fn;
+  appliers.add(fn);
+  return () => appliers.delete(fn);
 }
 
 function applyRemote(key: string, data: unknown, updated_at: string) {
@@ -419,7 +420,7 @@ function applyRemote(key: string, data: unknown, updated_at: string) {
   if (meta[key] && meta[key] >= updated_at) return; // قبلاً داریم یا جدیدتر است
   applyingRemote = true;
   try {
-    applier?.(key, data);
+    appliers.forEach((applier) => applier(key, data));
   } finally {
     applyingRemote = false;
   }
