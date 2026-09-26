@@ -25,6 +25,7 @@ export type SyncState = {
   offlineServicesCount: number;
   isManualOffline: boolean;
   intervalMinutes: number; // 0 = دستی (بدون چک دوره‌ای)، ۲، ۵، ۱۰، ۱۵، ۳۰، ۶۰ دقیقه
+  conflicts: number;
   error?: string;
 };
 
@@ -36,13 +37,25 @@ const QUEUE_KEY = "tlift_offline_queue_v2";
 const OFFLINE_SERVICES_KEY = "tlift_offline_services_v1";
 const MANUAL_OFFLINE_KEY = "tlift_manual_offline_v1";
 const SYNC_INTERVAL_KEY = "tlift_sync_interval_minutes_v1";
+const LAST_SYNC_KEY = "tlift_last_successful_sync_v1";
+const CONFLICTS_KEY = "tlift_sync_conflicts_v1";
 const DEFAULT_INTERVAL_MINUTES = 5; // پیش‌فرض: هر ۵ دقیقه
 
 // ── بک‌اند همگام‌سازی ──
-// پیش‌فرض: سرویس PHP روی هاست خود سایت (api/sync.php) — بدون نیاز به سوپابیس.
-// فقط اگر VITE_SUPABASE_URL تنظیم شده باشد از سوپابیس استفاده می‌شود.
+// پیش‌فرض: سرویس ابری رسمی آسمانسرا (emami-asemansara.ir) یا فایل api/sync.php روی هاست خود سایت
+const REMOTE_PROD_SYNC_API = "https://emami-asemansara.ir/api/sync.php";
+
+// تشخیص اینکه آیا در دامنهٔ تولیدی (هاست اصلی آسمانسرا) هستیم یا محیط پیش‌نمایش/توسعه
+const isProductionDomain =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "emami-asemansara.ir" ||
+    window.location.hostname === "www.emami-asemansara.ir");
+
+// در محیط‌های کلود/پیش‌نمایش (مانند Google Cloud Run *.run.app، *.e2b.app، localhost، و نسخه PWA موبایل)
+// سرور ابری رسمی آسمانسرا مستقیماً فراخوانی می‌شود تا از خطای 403 پروکسی جلوگیری شود.
 const SYNC_API =
-  (import.meta.env.VITE_SYNC_API as string | undefined) || "/api/sync.php";
+  (import.meta.env.VITE_SYNC_API as string | undefined) ||
+  (isProductionDomain ? "/api/sync.php" : REMOTE_PROD_SYNC_API);
 const SYNC_TOKEN =
   (import.meta.env.VITE_SYNC_TOKEN as string | undefined) ||
   "tlift-asemansara-1405";
@@ -119,14 +132,18 @@ const queue: Record<string, unknown> = loadQueue();
 const timers: Record<string, ReturnType<typeof setTimeout>> = {};
 let applyingRemote = false;
 let periodicTimer: ReturnType<typeof setInterval> | null = null;
+const loadConflicts = (): Record<string, unknown> => {
+  try { return JSON.parse(localStorage.getItem(CONFLICTS_KEY) || "{}"); } catch { return {}; }
+};
 
 let state: SyncState = {
   status: typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "idle",
-  lastSync: null,
+  lastSync: Number(localStorage.getItem(LAST_SYNC_KEY) || 0) || null,
   pending: Object.keys(queue).length,
   offlineServicesCount: getOfflineServices().length,
   isManualOffline: getInitialManualOffline(),
   intervalMinutes: getSyncInterval(),
+  conflicts: Object.keys(loadConflicts()).length,
 };
 
 const listeners = new Set<Listener>();
@@ -230,6 +247,8 @@ function describeSyncError(e: unknown): string {
   if (raw.includes("مهلت اتصال")) return "سرور به‌موقع پاسخ نداد (تایم‌اوت). اینترنت کند است یا سرور همگام‌سازی در دسترس نیست.";
   if (s.includes("failed to fetch") || s.includes("networkerror") || s.includes("load failed") || s.includes("network request failed"))
     return "اتصال به سرور همگام‌سازی برقرار نشد؛ اینترنت، فیلترشکن یا در دسترس نبودن سرور را بررسی کنید.";
+  if (s.includes("403") || raw.includes("forbidden") || raw.includes("دسترسی غیرمجاز"))
+    return "دسترسی به سرور همگام‌سازی مسدود شد (HTTP 403) — تنظیمات فایروال یا اتصال اینترنت را بررسی کنید.";
   if (s.includes("404") || raw.includes("پیدا نشد"))
     return "فایل api/sync.php روی هاست پیدا نشد — نسخهٔ جدید خروجی سی‌پنل را آپلود کنید.";
   if (s.includes("401") || s.includes("invalid token"))
@@ -243,28 +262,58 @@ function describeSyncError(e: unknown): string {
 }
 
 // ── توابع سرویس PHP روی هاست (api/sync.php) ──
+const syncApiCandidates = (): string[] => {
+  const custom = import.meta.env.VITE_SYNC_API as string | undefined;
+  if (custom) return [custom];
+
+  if (isProductionDomain) {
+    // روی دامنهٔ اختصاصی cPanel، ابتدا مسیر محلی و سپس آدرس کامل آنلاین
+    return ["/api/sync.php", "/sync.php", REMOTE_PROD_SYNC_API];
+  }
+
+  // در تمامی محیط‌های پیش‌نمایش و کلود (مانند Google Cloud Run *.run.app، *.e2b.app، localhost، و نسخه موبایل):
+  // اولویت اول سرور ابری مستقیم https://emami-asemansara.ir/api/sync.php است تا بدون خطای پروکسی 403 مستقیماً ارتباط برقرار شود.
+  return [
+    REMOTE_PROD_SYNC_API,
+    "https://emami-asemansara.ir/sync.php",
+    "/api/sync.php",
+  ];
+};
+
 async function apiUpsert(key: string, data: unknown, updated_at: string) {
-  const res = await withTimeout(
-    fetch(`${SYNC_API}?token=${encodeURIComponent(SYNC_TOKEN)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, data, updated_at }),
-    })
-  );
-  if (!res.ok) throw new Error(`خطای سرور همگام‌سازی (HTTP ${res.status})`);
+  let lastError: unknown;
+  for (const endpoint of syncApiCandidates()) {
+    try {
+      const res = await withTimeout(fetch(`${endpoint}?token=${encodeURIComponent(SYNC_TOKEN)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, data, updated_at, base_updated_at: loadMeta()[key] || null }),
+      }));
+      if (res.status === 409) {
+        const conflict = await res.json().catch(() => ({}));
+        const conflicts = loadConflicts();
+        conflicts[key] = { local: data, server: conflict.server, detectedAt: Date.now() };
+        localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts));
+        setState({ conflicts: Object.keys(conflicts).length });
+        throw new Error("تداخل اطلاعات: این رکورد در دستگاه دیگری تغییر کرده و برای بررسی نگهداری شد.");
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return;
+    } catch (error) { lastError = error; }
+  }
+  throw new Error(`خطای سرور همگام‌سازی: ${String((lastError as Error)?.message || lastError)}`);
 }
 
-async function apiSelectPrefix(
-  prefix: string
-): Promise<{ key: string; data: unknown; updated_at: string }[]> {
-  const res = await withTimeout(
-    fetch(
-      `${SYNC_API}?prefix=${encodeURIComponent(prefix)}&token=${encodeURIComponent(SYNC_TOKEN)}`
-    )
-  );
-  if (!res.ok) throw new Error(`خطای سرور همگام‌سازی (HTTP ${res.status})`);
-  const rows = await res.json();
-  return Array.isArray(rows) ? rows : [];
+async function apiSelectPrefix(prefix: string): Promise<{ key: string; data: unknown; updated_at: string }[]> {
+  let lastError: unknown;
+  for (const endpoint of syncApiCandidates()) {
+    try {
+      const res = await withTimeout(fetch(`${endpoint}?prefix=${encodeURIComponent(prefix)}&token=${encodeURIComponent(SYNC_TOKEN)}`));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = await res.json();
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) { lastError = error; }
+  }
+  throw new Error(`خطای سرور همگام‌سازی: ${String((lastError as Error)?.message || lastError)}`);
 }
 
 // ---- push (debounced per key) ----
@@ -312,15 +361,17 @@ async function flushKey(key: string): Promise<boolean> {
     meta[key] = updated_at;
     saveMeta(meta);
 
+    const syncedAt = Date.now();
+    localStorage.setItem(LAST_SYNC_KEY, String(syncedAt));
     setState({
       status: "online",
-      lastSync: Date.now(),
+      lastSync: syncedAt,
       pending: Object.keys(queue).length,
       error: undefined,
     });
     return true;
   } catch (e: unknown) {
-    console.error("[cloudSync] flushKey failed:", e);
+    console.warn("[cloudSync] flushKey:", e);
     // در صف نگه‌دار و وضعیت را به آفلاین تغییر بده
     queue[key] = data;
     saveQueue(queue);
@@ -354,10 +405,11 @@ export async function flushAll(): Promise<boolean> {
 
 // ---- pull ----
 type Applier = (key: string, data: unknown) => void;
-let applier: Applier | null = null;
+const appliers = new Set<Applier>();
 
 export function registerApplier(fn: Applier) {
-  applier = fn;
+  appliers.add(fn);
+  return () => appliers.delete(fn);
 }
 
 function applyRemote(key: string, data: unknown, updated_at: string) {
@@ -368,7 +420,7 @@ function applyRemote(key: string, data: unknown, updated_at: string) {
   if (meta[key] && meta[key] >= updated_at) return; // قبلاً داریم یا جدیدتر است
   applyingRemote = true;
   try {
-    applier?.(key, data);
+    appliers.forEach((applier) => applier(key, data));
   } finally {
     applyingRemote = false;
   }
@@ -395,10 +447,12 @@ export async function pullAll(prefix = "tlift_"): Promise<boolean> {
     }
 
     rows.forEach((r) => applyRemote(r.key, r.data, r.updated_at));
-    setState({ status: "online", lastSync: Date.now(), error: undefined });
+    const syncedAt = Date.now();
+    localStorage.setItem(LAST_SYNC_KEY, String(syncedAt));
+    setState({ status: "online", lastSync: syncedAt, error: undefined });
     return true;
   } catch (e: unknown) {
-    console.error("[cloudSync] pullAll failed:", e);
+    console.warn("[cloudSync] pullAll:", e);
     setState({ status: "offline", error: describeSyncError(e) });
     return false;
   }
@@ -489,9 +543,11 @@ export async function syncNow(): Promise<{ success: boolean; message: string }> 
 
     if (pushed && pulled) {
       clearOfflineServices();
+      const syncedAt = Date.now();
+      localStorage.setItem(LAST_SYNC_KEY, String(syncedAt));
       setState({
         status: "online",
-        lastSync: Date.now(),
+        lastSync: syncedAt,
         pending: 0,
         offlineServicesCount: 0,
         error: undefined,
@@ -508,7 +564,7 @@ export async function syncNow(): Promise<{ success: boolean; message: string }> 
       };
     }
   } catch (err: unknown) {
-    console.error("[cloudSync] syncNow failed:", err);
+    console.warn("[cloudSync] syncNow:", err);
     setState({ status: "offline", error: describeSyncError(err) });
     return {
       success: false,

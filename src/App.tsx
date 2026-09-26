@@ -1,11 +1,9 @@
-import { useMemo, useState, useEffect, lazy, Suspense } from "react";
+import { useMemo, useState, useEffect, useRef, lazy, Suspense } from "react";
 import {
   ArrowLeft,
   RotateCw,
   Search,
   Plus,
-  Minus,
-  Minimize2,
   X,
   Lock,
   Megaphone,
@@ -40,13 +38,14 @@ import ContractRibbonBar from "./components/ContractRibbonBar";
 import WelcomeBanner from "./components/WelcomeBanner";
 import SyncIndicator from "./components/SyncIndicator";
 import AndroidAppModal from "./components/AndroidAppModal";
+// ثبت قرارداد مسیر حیاتی برنامه است و برای جلوگیری از خطای بارگذاری chunk قدیمی PWA، مستقیم بارگذاری می‌شود.
+import NewContractWizard from "./NewContractWizard";
 
 // صفحه‌های سنگین به‌صورت تنبل (lazy) لود می‌شوند تا باندل اولیهٔ اپ کوچک بماند
 const StaffPage = lazy(() => import("./StaffPage"));
 const PartsPage = lazy(() => import("./PartsPage"));
 const CustomersPage = lazy(() => import("./CustomersPage"));
 const ContractsPage = lazy(() => import("./ContractsPage"));
-const NewContractWizard = lazy(() => import("./NewContractWizard"));
 const ContractView = lazy(() => import("./ContractView"));
 const CustomerReportsPage = lazy(() => import("./CustomerReportsPage"));
 const CsvUploadPage = lazy(() => import("./CsvUploadPage"));
@@ -57,7 +56,11 @@ const ZonesPage = lazy(() => import("./components/ZonesPage"));
 const ChecklistSettingsPage = lazy(() => import("./components/ChecklistSettingsPage"));
 const CpanelSettingsPage = lazy(() => import("./components/CpanelSettingsPage"));
 const TechnicianMobileApp = lazy(() => import("./components/mobile/TechnicianMobileApp"));
+const TechnicianDashboard = lazy(() => import("./components/TechnicianDashboard"));
+const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
+const TriangleKeyLocationsPage = lazy(() => import("./components/TriangleKeyLocationsPage"));
+const NotificationsPanel = lazy(() => import("./components/NotificationsPanel"));
 
 function PageLoader({ label = "در حال بارگذاری…" }: { label?: string }) {
   return (
@@ -69,7 +72,7 @@ function PageLoader({ label = "در حال بارگذاری…" }: { label?: str
     </div>
   );
 }
-import { useContracts, useMarketingItems, appStore, MonthService } from "./store";
+import { useContracts, useMarketingItems, useCompanyAccessSettings, useNotifications, appStore, MonthService } from "./store";
 import { useAuth } from "./contexts/AuthContext";
 import { checkForAppUpdates, APP_VERSION } from "./utils/appUpdater";
 import { CustomerAuthData } from "./utils/customerAuth";
@@ -93,6 +96,9 @@ type Tab = {
     | "zones"
     | "checklist"
     | "cpanel"
+    | "technicianDashboard"
+    | "accessManagement"
+    | "triangleKeyLocations"
     | "serviceReport";
   contract?: Contract;
   monthService?: MonthService;
@@ -136,8 +142,34 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [tabs, setTabs] = useState<Tab[]>([{ id: 1, title: "تب جدید", kind: "home" }]);
   const [active, setActive] = useState(1);
+  const activeHistory = useRef<number[]>([]);
+  const navigatingBack = useRef(false);
+  useEffect(() => {
+    if (navigatingBack.current) {
+      navigatingBack.current = false;
+      return;
+    }
+    const history = activeHistory.current;
+    if (history[history.length - 1] !== active) history.push(active);
+    if (history.length > 50) history.shift();
+  }, [active]);
+  const goBack = () => {
+    const history = activeHistory.current;
+    if (history.length <= 1) {
+      showToast("صفحه قبلی وجود ندارد");
+      return;
+    }
+    history.pop();
+    const previous = history[history.length - 1];
+    if (tabs.some((tab) => tab.id === previous)) {
+      navigatingBack.current = true;
+      setActive(previous);
+    }
+  };
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [androidModal, setAndroidModal] = useState(false);
+  const [supportModal, setSupportModal] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
@@ -156,7 +188,17 @@ export default function App() {
   };
 
   const contracts = useContracts();
+  const notifications = useNotifications();
+  const unreadNotifications = notifications.filter((item) => !item.read).length;
   const marketingItems = useMarketingItems();
+  const accessSettings = useCompanyAccessSettings();
+  const currentLeader = accessSettings.leaders.find((leader) => leader.phone.replace(/\D/g, "").slice(-10) === (currentUserInfo?.phone || "").replace(/\D/g, "").slice(-10));
+  const visibleNavItems = currentUserInfo?.role !== "operator" ? navItems : navItems.filter((item) =>
+    item.id === "service" ||
+    item.id === "home" ||
+    (item.id === "settings" && currentLeader?.canAccessSettings) ||
+    (item.id === "file" && currentLeader?.canManageContracts)
+  );
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -200,7 +242,10 @@ export default function App() {
   };
 
   const openMenuItem = (label: string) => {
-    if (label === "لیست مشتریان") addTab("مشتریان", "customers");
+    if (label === "مدیریت مدیران و دسترسی‌ها") addTab("مدیریت دسترسی‌ها", "accessManagement");
+    else if (["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری", "قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"].includes(label))
+      addTab("داشبورد سرویس‌کاران", "technicianDashboard");
+    else if (label === "لیست مشتریان") addTab("مشتریان", "customers");
     else if (label === "چاپ گزارش مشتریان بدهکار") addTab("چاپ گزارش مشتریان بدهکار", "debtorReport");
     else if (label === "چاپ گزارش مشتریان") addTab("چاپ گزارش مشتریان", "customerReport");
     else if (label === "قرارداد ها" || label === "قراردادها") addTab("قرارداد ها", "contracts");
@@ -211,6 +256,7 @@ export default function App() {
       label === "سرویس ها"
     )
       addTab("مدیریت زمانبندی سرویس ها و خرابی ها", "schedule");
+    else if (label === "محل کلید سه‌گوش") addTab("محل کلید سه‌گوش", "triangleKeyLocations");
     else if (label === "سرویسکار و مسئول انجام") addTab("سرویس کار و مسئول انجام", "staff");
     else if (label === "قطعات" || label === "قطعات مصرفی") addTab("قطعه ها", "parts");
     else if (label === "منطقه" || label === "منطقه‌ها" || label === "منطقه ها" || label.includes("منطقه"))
@@ -363,22 +409,13 @@ export default function App() {
   return (
     <div
       dir="rtl"
-      className={`min-h-screen w-full text-right ${dark ? "bg-neutral-900" : "bg-neutral-200"} p-3 font-[Tahoma,system-ui]`}
+      className={`min-h-screen w-full text-right ${dark ? "bg-[radial-gradient(circle_at_top_right,#243047_0%,#171717_48%,#101010_100%)]" : "bg-[radial-gradient(circle_at_top_right,#e0edff_0%,#f4f7fb_48%,#e9edf4_100%)]"} p-3 font-[Vazirmatn,Tahoma,system-ui]`}
     >
       <div
         className={`mx-auto flex h-[calc(100vh-24px)] max-w-[1400px] flex-col overflow-hidden rounded-md border ${t.border} ${t.body} shadow-2xl`}
       >
         {/* Title bar */}
         <div className={`flex items-center gap-2 ${t.chrome} px-2 py-1.5`}>
-          <div className="flex items-center gap-1">
-            <button type="button" className={`rounded p-1.5 ${t.hover} ${t.sub}`}>
-              <ArrowLeft size={16} />
-            </button>
-            <button type="button" className={`rounded p-1.5 ${t.hover} ${t.sub}`}>
-              <RotateCw size={16} />
-            </button>
-          </div>
-
           <div className={`flex h-7 w-[220px] items-center gap-2 rounded border px-2 ${t.input}`}>
             <Search size={13} className={t.sub} />
             <input
@@ -439,10 +476,10 @@ export default function App() {
           <button
             type="button"
             onClick={() => setAndroidModal(true)}
-            title="دانلود فایل نصبی APK و نسخه اندروید تلیفت"
+            title="نصب برنامه مستقل آسمانسرا روی گوشی"
             className="flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-emerald-700 shadow-sm transition"
           >
-            <Smartphone size={13} /> فایل نصبی و اندروید
+            <Smartphone size={13} /> نصب برنامه آسمانسرا
           </button>
 
           <button
@@ -467,15 +504,12 @@ export default function App() {
             />
           </button>
 
-          <div className={`flex items-center gap-1 ${t.sub}`}>
-            <button type="button" className={`rounded p-1.5 ${t.hover}`}>
-              <Minus size={15} />
+          <div className={`flex items-center gap-1 border-r pr-2 ${t.border} ${t.sub}`}>
+            <button type="button" onClick={() => window.location.reload()} title="تازه‌سازی صفحه و دریافت آخرین اطلاعات" className={`rounded-lg p-2 ${t.hover} hover:text-sky-500`}>
+              <RotateCw size={17} />
             </button>
-            <button type="button" className={`rounded p-1.5 ${t.hover}`}>
-              <Minimize2 size={15} />
-            </button>
-            <button type="button" className="rounded p-1.5 hover:bg-red-600 hover:text-white">
-              <X size={15} />
+            <button type="button" onClick={goBack} title="بازگشت به صفحه قبلی برنامه" className={`rounded-lg p-2 ${t.hover} hover:text-violet-500`}>
+              <ArrowLeft size={18} />
             </button>
           </div>
         </div>
@@ -484,7 +518,7 @@ export default function App() {
         <div className="relative flex min-h-0 flex-1">
           {/* Sidebar */}
           <div className={`order-first flex w-[68px] shrink-0 flex-col overflow-y-auto border-s ${t.border} ${t.chrome}`}>
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const on = openMenu === item.id;
               const hasFlyout = item.id === "marketing" || !!menus[item.id];
@@ -668,6 +702,12 @@ export default function App() {
               <StaffPage t={t} />
             ) : current?.kind === "parts" ? (
               <PartsPage t={t} />
+            ) : current?.kind === "technicianDashboard" ? (
+              <TechnicianDashboard t={t} />
+            ) : current?.kind === "accessManagement" ? (
+              <AccessManagementPage t={t} />
+            ) : current?.kind === "triangleKeyLocations" ? (
+              <TriangleKeyLocationsPage t={t} onShowToast={showToast} />
             ) : current?.kind === "zones" ? (
               <ZonesPage t={t} onShowToast={showToast} />
             ) : current?.kind === "csvUpload" ? (
@@ -778,9 +818,10 @@ export default function App() {
           className={`flex items-center justify-between border-t ${t.border} ${t.chrome} px-3 py-1.5 text-[11.5px] ${t.sub}`}
         >
           <div className="flex items-center gap-5">
-            <span className="flex items-center gap-1">
-              <Megaphone size={13} /> اعلان ها
-            </span>
+            <button type="button" onClick={() => setNotificationsOpen(true)} className="relative flex items-center gap-1 transition hover:text-amber-400">
+              <Megaphone size={13} /> اعلان‌ها
+              {unreadNotifications > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unreadNotifications.toLocaleString("fa-IR")}</span>}
+            </button>
             <span
               onClick={() => currentUserInfo && setWelcomeUser(currentUserInfo)}
               title="کلیک برای نمایش پیام خوش‌آمدگویی"
@@ -802,19 +843,44 @@ export default function App() {
               <LogOut size={13} /> خروج
             </button>
             <SyncIndicator />
-            <span className="flex items-center gap-1">
+            <button type="button" onClick={() => setSupportModal(true)} className="flex items-center gap-1 transition hover:text-sky-400">
               <Headphones size={13} /> پشتیبانی
-            </span>
+            </button>
             <span className="flex items-center gap-1">
               <MessageSquare size={13} /> مانده پیامک: ۵٬۳۲۶٬۳۹۸ ریال
             </span>
           </div>
           <div className="flex items-center gap-5">
             <span className="flex items-center gap-1">
-              <GitBranch size={13} /> نسخه 1.1.22
+              <GitBranch size={13} /> نسخه {APP_VERSION}
             </span>
           </div>
         </div>
+
+        {notificationsOpen && (
+          <Suspense fallback={null}><NotificationsPanel t={t} onClose={() => setNotificationsOpen(false)} onShowToast={showToast} onOpenContract={(contractId) => { const selected = contracts.find((item) => item.id === contractId); if (selected) openContractView(selected); }} /></Suspense>
+        )}
+
+        {supportModal && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" onClick={() => setSupportModal(false)}>
+            <div dir="rtl" className={`w-full max-w-md rounded-2xl border p-5 text-right shadow-2xl ${t.card} ${t.border}`} onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/15 text-sky-500"><Headphones size={22} /></div>
+                  <div><h2 className={`font-bold ${t.text}`}>پشتیبانی و مدیریت</h2><p className={`mt-1 text-xs ${t.sub}`}>شرکت بنیان نوین گستر آسمان‌سرا</p></div>
+                </div>
+                <button type="button" onClick={() => setSupportModal(false)} className={`rounded-lg p-1.5 ${t.hover}`}><X size={17} /></button>
+              </div>
+              <div className={`mt-5 space-y-3 rounded-xl border p-4 text-sm ${t.border}`}>
+                <div><span className={`block text-xs ${t.sub}`}>مدیریت</span><strong className={t.text}>محسن امامی برسری</strong></div>
+                <div><span className={`block text-xs ${t.sub}`}>شماره تماس</span><a dir="ltr" href="tel:09192868509" className="font-bold text-sky-500 hover:underline">09192868509</a></div>
+                <div><span className={`block text-xs ${t.sub}`}>آدرس</span><span className={t.text}>الوند، فلکه دوم شهر صنعتی، جنب بانک ملی، ساختمان نوین</span></div>
+                <div><span className={`block text-xs ${t.sub}`}>شماره ثبت شرکت</span><strong className={t.text}>۳۱۳۸</strong></div>
+              </div>
+              <a href="tel:09192868509" className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-700"><Headphones size={17} /> تماس با مدیریت</a>
+            </div>
+          </div>
+        )}
 
         {/* کادر خوش‌آمدگویی شکیل ۵ ثانیه‌ای */}
         {welcomeUser && (

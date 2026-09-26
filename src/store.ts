@@ -1,6 +1,9 @@
 import { useSyncExternalStore } from "react";
 import { pushKey, registerApplier, syncNow, recordOfflineService, getSyncState } from "./cloudSync";
 import { Contract, Customer, Staff, initialContracts, initialCustomers, initialStaff } from "./data";
+import type { BuildingCsvRow } from "./utils/buildingsCsv";
+import { getContractServiceDay } from "./utils/serviceScheduleDays";
+import { getContractOfficialFee } from "./data/contractServiceFees";
 import {
   RAW_CSV_DATA,
   RAW_CUSTOMERS_CSV_DATA,
@@ -54,10 +57,12 @@ export type MonthService = {
   checklistResults?: Record<number, ServiceChecklistStatus>;
   attachments?: string[];
   delayOrAdvance?: string;
+  serviceDurationReason?: string;
 };
 
 export type PaymentRecord = {
   id: number;
+  approvalStatus?: "pending" | "approved" | "rejected";
   title: string;
   date: string;
   amount: number;
@@ -74,6 +79,22 @@ export type PaymentRecord = {
   bank?: string;
   accountNo?: string;
   installmentNo?: number;
+};
+
+export type AppNotification = {
+  id: string;
+  type: "payment" | "breakdown" | "ticket";
+  title: string;
+  message: string;
+  contractId: number;
+  contractNo?: string;
+  buildingName?: string;
+  createdAt: number;
+  read: boolean;
+  actionStatus?: "pending" | "approved" | "rejected" | "assigned";
+  paymentId?: number;
+  breakdownId?: string;
+  senderName?: string;
 };
 
 export type Invoice = {
@@ -185,23 +206,131 @@ export function generateInitialMonths(startYear = 1405, monthlyAmount = 8500000)
 function loadStorage<T>(key: string, fallback: T): T {
   try {
     const item = localStorage.getItem(key);
-    if (!item) return fallback;
-    return JSON.parse(item);
+    if (item) return JSON.parse(item);
+
+    // اگر کلید اصلی به هر دلیل آسیب دید، آخرین نسخه پشتیبان محلی بازیابی شود.
+    const backup = localStorage.getItem(`${key}__backup`);
+    if (backup) {
+      const restored = JSON.parse(backup) as T;
+      localStorage.setItem(key, backup);
+      return restored;
+    }
+    return fallback;
   } catch (e) {
     console.warn(`Error reading localStorage for ${key}`, e);
-    return fallback;
+    try {
+      const backup = localStorage.getItem(`${key}__backup`);
+      return backup ? (JSON.parse(backup) as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+}
+
+function writeLocalStorage<T>(key: string, data: T) {
+  try {
+    const serialized = JSON.stringify(data);
+    // قبل از هر تغییر، نسخه سالم فعلی را نگه می‌داریم تا ارتقای برنامه
+    // یا پاسخ اشتباه سرور نتواند تنها کپی اطلاعات مالی را از بین ببرد.
+    const current = localStorage.getItem(key);
+    if (current && current !== serialized) {
+      localStorage.setItem(`${key}__backup`, current);
+    }
+    localStorage.setItem(key, serialized);
+  } catch (e) {
+    console.warn(`Error saving localStorage for ${key}`, e);
   }
 }
 
 function saveStorage<T>(key: string, data: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.warn(`Error saving to localStorage for ${key}`, e);
-  }
-  // آینه‌سازی در Supabase (پرچم‌های seed همگام نمی‌شوند)
+  writeLocalStorage(key, data);
+  // آینه‌سازی در سرور (پرچم‌های seed همگام نمی‌شوند)
   if (!key.includes("seeded")) pushKey(key, data);
 }
+
+// اگر برنامه روی مرورگر/پیش‌نمایش تازه اجرا شود و دیتابیس محلی خالی باشد،
+// نسخه پایدار ثبت‌شده در مخزن خصوصی بازیابی و برای سرور نیز صف‌بندی می‌شود.
+async function restoreBootstrapWhenEmpty() {
+  try {
+    const localContracts = JSON.parse(localStorage.getItem("tlift_contracts") || "[]");
+    const localCustomers = JSON.parse(localStorage.getItem("tlift_customers") || "[]");
+    if (Array.isArray(localContracts) && localContracts.length > 0 && Array.isArray(localCustomers) && localCustomers.length > 0) return false;
+    // فایل بزرگ اطلاعات از باندل اصلی جدا شده و فقط در نصب واقعاً خالی دریافت می‌شود.
+    const response = await fetch("/data/tlift-bootstrap.json", { cache: "force-cache" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const bootstrapData = await response.json() as { entries?: Record<string, unknown> };
+    const entries = bootstrapData.entries || {};
+    Object.entries(entries).forEach(([key, value]) => {
+      writeLocalStorage(key, value);
+      pushKey(key, value);
+    });
+    localStorage.setItem("tlift_bootstrap_restored_v1", new Date().toISOString());
+    return Object.keys(entries).length > 0;
+  } catch (error) {
+    console.warn("Unable to restore external T-Lift backup", error);
+    return false;
+  }
+}
+void restoreBootstrapWhenEmpty().then((restored) => {
+  if (!restored) return;
+  // بازیابی اولیه بدون reload انجام می‌شود تا کاربر وسط فرم ثبت قرارداد به صفحه خانه برنگردد.
+  contracts = loadStorage<Contract[]>("tlift_contracts", contracts);
+  customers = loadStorage<Customer[]>("tlift_customers", customers);
+  const restoredDetails = loadStorage<Record<number, ContractDetails>>("tlift_contract_details", contractDetailsMap);
+  Object.assign(contractDetailsMap, restoredDetails);
+  notifyListeners();
+});
+
+// اعمال مبالغ واقعی و مصوب قراردادها از لیست رسمی مدیریت به حافظه مرورگر
+function syncOfficialContractFees() {
+  try {
+    const rawContracts = localStorage.getItem("tlift_contracts");
+    if (!rawContracts) return;
+    const storedContracts = JSON.parse(rawContracts) as Contract[];
+    if (!Array.isArray(storedContracts) || storedContracts.length === 0) return;
+
+    let contractsUpdated = false;
+    const updatedContracts = storedContracts.map((c) => {
+      const officialFee = getContractOfficialFee(c.no);
+      if (typeof officialFee === "number" && c.monthlyServiceFee !== officialFee) {
+        contractsUpdated = true;
+        return { ...c, monthlyServiceFee: officialFee };
+      }
+      return c;
+    });
+
+    if (contractsUpdated) {
+      writeLocalStorage("tlift_contracts", updatedContracts);
+    }
+
+    const rawDetails = localStorage.getItem("tlift_contract_details");
+    if (rawDetails) {
+      const detailsMap = JSON.parse(rawDetails) as Record<string, ContractDetails>;
+      let detailsUpdated = false;
+      Object.keys(detailsMap).forEach((cidStr) => {
+        const cid = Number(cidStr);
+        const c = updatedContracts.find((item) => item.id === cid);
+        if (!c) return;
+        const fee = getContractOfficialFee(c.no) ?? c.monthlyServiceFee ?? 0;
+        const details = detailsMap[cidStr];
+        if (details && Array.isArray(details.months)) {
+          details.months.forEach((m) => {
+            if (m.amount !== fee) {
+              m.amount = fee;
+              detailsUpdated = true;
+            }
+          });
+        }
+      });
+      if (detailsUpdated) {
+        writeLocalStorage("tlift_contract_details", detailsMap);
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to sync official contract fees", err);
+  }
+}
+syncOfficialContractFees();
 
 // In-Memory Global State
 export type MarketingItem = {
@@ -217,8 +346,40 @@ const INITIAL_MARKETING_ITEMS: MarketingItem[] = [
   { id: "file:لیست مشتریان", name: "لیست مشتریان", section: "پرونده", groupTitle: "مشتریان" },
 ];
 
+export type CompanyLeader = { id: string; name: string; phone: string; title: "مدیرعامل" | "رئیس شرکت" | "مدیر"; canManageContracts: boolean; canManageFinancials: boolean; canAccessSettings: boolean };
+export type CompanyAccessSettings = { gpsRequired: boolean; gpsRadiusMeters: number; leaders: CompanyLeader[]; serviceDispatchers?: string[]; dailyDispatcherName?: string; dailyDispatcherDate?: string };
+export type ContractGeoLocation = { contractId: number; latitude: number; longitude: number; accuracy?: number; updatedAt: number };
+
+export type TechnicianPartDelivery = {
+  id: string;
+  technicianName: string;
+  technicianPhone?: string;
+  partId?: number;
+  partCode?: string;
+  partName: string;
+  unit?: string;
+  quantity: number;
+  usedQuantity: number;
+  remainingQuantity: number;
+  deliveredAt: string;
+  note?: string;
+  status: "active" | "consumed" | "returned";
+};
+
+export type ActiveServiceAssignment = {
+  contractId: number;
+  monthId: number;
+  technicianName: string;
+  startedAt: number;
+  buildingName: string;
+};
+
 export type ScheduledService = {
   id: string;
+  contractId?: number;
+  monthId?: number;
+  assignedBy?: string;
+  assignedAt?: number;
   date: string; // e.g. "1405-06-01"
   buildingName: string;
   status: "done" | "pending";
@@ -633,17 +794,23 @@ const INITIAL_SCHEDULED_SERVICES: ScheduledService[] = [
   },
 ];
 
+let notifications: AppNotification[] = loadStorage<AppNotification[]>("tlift_notifications_v1", []);
 let contracts: Contract[] = loadStorage<Contract[]>("tlift_contracts", initialContracts);
 let customers: Customer[] = loadStorage<Customer[]>("tlift_customers", initialCustomers);
 let staff: Staff[] = loadStorage<Staff[]>("tlift_staff", initialStaff);
 let marketingItems: MarketingItem[] = loadStorage<MarketingItem[]>("tlift_marketing_items", INITIAL_MARKETING_ITEMS);
 let scheduledServices: ScheduledService[] = loadStorage<ScheduledService[]>("tlift_scheduled_services", INITIAL_SCHEDULED_SERVICES);
+let activeServiceAssignments: ActiveServiceAssignment[] = loadStorage<ActiveServiceAssignment[]>("tlift_active_service_assignments_v1", []);
+let technicianPartDeliveries: TechnicianPartDelivery[] = loadStorage<TechnicianPartDelivery[]>("tlift_technician_part_deliveries_v1", []).map((item) => ({ ...item, usedQuantity: item.usedQuantity || 0, remainingQuantity: item.remainingQuantity ?? item.quantity, status: item.status || "active" }));
+let contractGeoLocations: ContractGeoLocation[] = loadStorage<ContractGeoLocation[]>("tlift_contract_geo_locations_v1", []);
+let companyAccessSettings: CompanyAccessSettings = loadStorage<CompanyAccessSettings>("tlift_company_access_settings_v1", { gpsRequired: true, gpsRadiusMeters: 300, leaders: [], serviceDispatchers: ["مرتضی قاسمعلی", "محمد حسن رحیمی زاده"] });
 let zones: ZoneItem[] = loadStorage<ZoneItem[]>("tlift_zones_v2", INITIAL_ZONES);
 let checklistItems: ChecklistItem[] = loadStorage<ChecklistItem[]>("tlift_checklist_v1", INITIAL_CHECKLIST);
 let checklistCategories: string[] = loadStorage<string[]>("tlift_checklist_categories_v1", INITIAL_CHECKLIST_CATEGORIES);
 
 // Auto-seed CSV contracts if only default demo contracts are present
-const isCsvSeeded = loadStorage<boolean>("tlift_csv_seeded_v1", false);
+// داده نمونه هرگز خودکار وارد نمی‌شود؛ ورود اطلاعات فقط با اقدام صریح مدیر انجام می‌شود.
+const isCsvSeeded = true;
 if (!isCsvSeeded) {
   try {
     const csvRows = parseContractsCsv(RAW_CSV_DATA);
@@ -674,22 +841,24 @@ if (!isCsvSeeded) {
       }
     });
 
-    saveStorage("tlift_contracts", contracts);
-    saveStorage("tlift_customers", customers);
-    saveStorage("tlift_csv_seeded_v1", true);
+    // داده‌های نمونه/CSV اولیه فقط محلی هستند. ارسال آن‌ها به سرور می‌تواند
+    // اطلاعات واقعی نسخه قبلی را در اولین اجرای نسخه جدید رونویسی کند.
+    writeLocalStorage("tlift_contracts", contracts);
+    writeLocalStorage("tlift_customers", customers);
+    writeLocalStorage("tlift_csv_seeded_v1", true);
   } catch (e) {
     console.error("Error auto-seeding CSV contracts", e);
   }
 }
 
 // Auto-seed customers if customers list is small/default
-const isCustCsvSeeded = loadStorage<boolean>("tlift_cust_csv_seeded_v1", false);
+const isCustCsvSeeded = true;
 if (!isCustCsvSeeded) {
   try {
     const custRows = parseCustomersCsv(RAW_CUSTOMERS_CSV_DATA);
     customers = custRows.map((r, i) => convertRowToCustomer(r, i + 1));
-    saveStorage("tlift_customers", customers);
-    saveStorage("tlift_cust_csv_seeded_v1", true);
+    writeLocalStorage("tlift_customers", customers);
+    writeLocalStorage("tlift_cust_csv_seeded_v1", true);
   } catch (e) {
     console.error("Error auto-seeding CSV customers", e);
   }
@@ -755,6 +924,9 @@ const notifyListeners = () => {
 registerApplier((key, data) => {
   if (data === null || data === undefined) return;
   switch (key) {
+    case "tlift_notifications_v1":
+      notifications = data as AppNotification[];
+      break;
     case "tlift_contracts":
       contracts = data as Contract[];
       break;
@@ -769,6 +941,18 @@ registerApplier((key, data) => {
       break;
     case "tlift_scheduled_services":
       scheduledServices = data as ScheduledService[];
+      break;
+    case "tlift_active_service_assignments_v1":
+      activeServiceAssignments = data as ActiveServiceAssignment[];
+      break;
+    case "tlift_technician_part_deliveries_v1":
+      technicianPartDeliveries = data as TechnicianPartDelivery[];
+      break;
+    case "tlift_contract_geo_locations_v1":
+      contractGeoLocations = data as ContractGeoLocation[];
+      break;
+    case "tlift_company_access_settings_v1":
+      companyAccessSettings = data as CompanyAccessSettings;
       break;
     case "tlift_zones_v2":
       zones = data as ZoneItem[];
@@ -788,18 +972,67 @@ registerApplier((key, data) => {
     default:
       return;
   }
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch {
-    /* ignore */
-  }
+  // دریافت نسخه جدید نباید نسخه محلی قبلی را بدون پشتیبان از بین ببرد.
+  writeLocalStorage(key, data);
   notifyListeners();
 });
 
 // Store API
 export const appStore = {
+  // اعلان‌های مدیریتی همگام‌شونده بین دستگاه‌ها
+  getNotifications: () => notifications,
+  addNotification: (item: Omit<AppNotification, "id" | "createdAt" | "read">) => {
+    const created: AppNotification = { ...item, id: `ntf-${Date.now()}-${Math.floor(Math.random() * 1000)}`, createdAt: Date.now(), read: false };
+    notifications = [created, ...notifications].slice(0, 500);
+    saveStorage("tlift_notifications_v1", notifications);
+    notifyListeners();
+    return created;
+  },
+  markNotificationRead: (id: string) => {
+    notifications = notifications.map((item) => item.id === id ? { ...item, read: true } : item);
+    saveStorage("tlift_notifications_v1", notifications);
+    notifyListeners();
+  },
+  resolveNotification: (id: string, approved: boolean) => {
+    const item = notifications.find((notification) => notification.id === id);
+    if (!item) return;
+    if (item.type === "payment" && item.paymentId) {
+      const details = appStore.getContractDetails(item.contractId);
+      const payment = details.payments.find((entry) => entry.id === item.paymentId);
+      appStore.updatePayment(item.contractId, item.paymentId, { approvalStatus: approved ? "approved" : "rejected" });
+      if (payment?.monthId) {
+        contractDetailsMap[item.contractId] = { ...contractDetailsMap[item.contractId], months: contractDetailsMap[item.contractId].months.map((month) => month.id === payment.monthId ? { ...month, paid: approved, paidDate: approved ? payment.date : undefined, paidMethod: approved ? payment.method : undefined, paidRef: approved ? payment.ref : undefined } : month) };
+        saveStorage("tlift_contract_details", contractDetailsMap);
+      }
+    }
+    notifications = notifications.map((notification) => notification.id === id ? { ...notification, read: true, actionStatus: approved ? "approved" : "rejected" } : notification);
+    saveStorage("tlift_notifications_v1", notifications);
+    notifyListeners();
+  },
+
+  // CONTRACTS & CUSTOMERS DATABASE RESET
+  clearAllCustomerContractData: () => {
+    contracts = [];
+    customers = [];
+    scheduledServices = [];
+    activeServiceAssignments = [];
+    contractGeoLocations = [];
+    Object.keys(contractDetailsMap).forEach((key) => delete contractDetailsMap[Number(key)]);
+    saveStorage("tlift_contracts", contracts);
+    saveStorage("tlift_customers", customers);
+    saveStorage("tlift_contract_details", contractDetailsMap);
+    saveStorage("tlift_scheduled_services", scheduledServices);
+    saveStorage("tlift_active_service_assignments_v1", activeServiceAssignments);
+    saveStorage("tlift_contract_geo_locations_v1", contractGeoLocations);
+    notifyListeners();
+  },
+
   // CONTRACTS
-  getContracts: () => contracts,
+  getContracts: () => {
+    // هنگام بارگذاری فهرست، تاریخ تمام قراردادهای موجود نیز یک‌جا با برنامه رسمی تطبیق داده می‌شود.
+    contracts.forEach((contract) => appStore.getContractDetails(contract.id));
+    return contracts;
+  },
   getOrCreateContractForCustomer: (customerName: string, debtorAmount?: number): Contract => {
     const cleanName = customerName.replace(/^\*\s*/, "").trim();
     // Try to find existing
@@ -881,12 +1114,63 @@ export const appStore = {
     saveStorage("tlift_contracts", contracts);
     notifyListeners();
   },
+  renewContract: (updated: Contract) => {
+    const previous = contracts.find((c) => c.id === updated.id);
+    const renewed: Contract = {
+      ...updated,
+      kind: "renew",
+      renewalHistory: [...(previous?.renewalHistory || []), ...(previous ? [{ start: previous.start, end: previous.end, monthlyServiceFee: previous.monthlyServiceFee || 0, renewedAt: Date.now() }] : [])],
+    };
+    contracts = contracts.map((c) => c.id === renewed.id ? renewed : c);
+    saveStorage("tlift_contracts", contracts);
+    const details = appStore.getContractDetails(renewed.id);
+    const yearMatch = renewed.start?.match(/(\d{4})/);
+    const year = yearMatch ? Number(yearMatch[1]) : 1405;
+    const amount = renewed.monthlyServiceFee || details.months.at(-1)?.amount || 0;
+    const maxId = details.months.reduce((max, month) => Math.max(max, month.id), 0);
+    const newPeriod = generateInitialMonths(year, amount).map((month, index) => ({ ...month, id: maxId + index + 1, done: false, date: undefined, inTime: undefined, outTime: undefined, paid: false, paidDate: undefined, paidMethod: undefined, paidRef: undefined, doneBy: undefined, techs: undefined, report: undefined, faultsCount: 0, faultsList: [], partsAmount: 0, partsList: [], wage: 0 }));
+    contractDetailsMap[renewed.id] = { ...details, months: [...details.months, ...newPeriod] };
+    saveStorage("tlift_contract_details", contractDetailsMap);
+    notifyListeners();
+    return renewed;
+  },
   deleteContract: (id: number) => {
     contracts = contracts.filter((c) => c.id !== id);
     saveStorage("tlift_contracts", contracts);
     delete contractDetailsMap[id];
     saveStorage("tlift_contract_details", contractDetailsMap);
     notifyListeners();
+  },
+
+  importBuildingsFromCsv: (rows: BuildingCsvRow[]) => {
+    const monthNames = ["مهر", "آبان", "آذر", "دی", "بهمن", "اسفند", "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور"];
+    const makeRawDetails = (amount: number, contractNo: string): ContractDetails => ({
+      months: monthNames.map((m, i) => {
+        const monthNumber = ((i + 6) % 12) + 1;
+        const year = i < 6 ? 1405 : 1406;
+        const day = getContractServiceDay(contractNo);
+        return { id: i + 1, m, y: year, plannedDate: `${year}/${String(monthNumber).padStart(2, "0")}/${String(day).padStart(2, "0")}`, done: false, amount, paid: false, faultsCount: 0, faultsList: [], partsAmount: 0, partsList: [], wage: 0, trip: 0, discount: 0 };
+      }),
+      payments: [], invoices: [], breakdowns: [],
+    });
+    let updated = 0;
+    const fees = new Map(rows.map((row) => [row.contractNo.replace(/^0+/, ""), row]));
+
+    // با هر بار ورود این فایل، تمام سابقه مالی و سرویس همه قراردادها خام می‌شود.
+    contracts = contracts.map((contract) => {
+      const row = fees.get(contract.no.replace(/^0+/, ""));
+      const amount = row?.serviceFee || 0;
+      contractDetailsMap[contract.id] = makeRawDetails(amount, contract.no);
+      if (!row) return { ...contract, monthlyServiceFee: 0 };
+      updated++;
+      return { ...contract, customer: row.customerName || contract.customer, building: row.buildingName || contract.building, buildingName: row.buildingName || contract.buildingName, start: row.startDate || contract.start, end: row.endDate || contract.end, monthlyServiceFee: amount };
+    });
+    activeServiceAssignments = [];
+    saveStorage("tlift_contracts", contracts);
+    saveStorage("tlift_contract_details", contractDetailsMap);
+    saveStorage("tlift_active_service_assignments_v1", activeServiceAssignments);
+    notifyListeners();
+    return { totalRows: rows.length, updated };
   },
 
   importContractsFromCsv: (csvText: string, mode: "merge" | "replace" = "replace") => {
@@ -943,95 +1227,36 @@ export const appStore = {
 
   // CONTRACT DETAILS (Months, Services, Payments, Invoices)
   getContractDetails: (contractId: number): ContractDetails => {
-    const contract = contracts.find((c) => c.id === contractId);
-    const isContract5475 = contract?.no === "5475";
-
     if (!contractDetailsMap[contractId]) {
-      if (isContract5475) {
-        // Exact data matching user's screenshot sshot-2.png and sshot-4.png
-        const defaultChecks: Record<number, ServiceChecklistStatus> = {};
-        for (let c = 1; c <= 38; c++) defaultChecks[c] = "ok";
-
-        const monthlyAmt = 5500000;
-        const initialMonths = generateInitialMonths(1405, monthlyAmt).map((m, idx) => ({
-          ...m,
-          amount: monthlyAmt,
-          paid: true,
-          done: idx < 4,
-          paidDate: "1405/06/13",
-          paidMethod: "نقد",
-          paidRef: "CSH-5475-01",
-          serviceNo: idx === 0 ? "774917" : `7749${18 + idx}`,
-          plannedDate: idx === 0 ? "1405/03/26" : `1405/0${4 + idx}/26`,
-          date: idx === 0 ? "1405/03/28" : idx < 4 ? `1405/0${4 + idx}/28` : undefined,
-          report: idx === 0 ? "سرویس آسانسور خرداد 1405انجام شد" : `سرویس آسانسور ${m.m} ${m.y} انجام شد`,
-          techs: [
-            "محسن امامی برسری",
-            "مرتضی قاسمعلی",
-            "محمد حسن رحیمی زاده",
-            "بهمن کشاورز",
-            "میثم سهرابی",
-            "مجتبی فرهمند",
-          ],
-          doneBy: "محسن امامی برسری",
-          buildingName: "حسینی فر چهاراه پادگان",
-          deviceNo: "1",
-          reminder: "-",
-          customerFollowup: "-",
-          wage: 0,
-          trip: 0,
-          partsAmount: 0,
-          discount: 0,
-          tax: 0,
-          checklistResults: defaultChecks,
-        }));
-        contractDetailsMap[contractId] = {
-          months: initialMonths,
-          payments: [
-            {
-              id: 1,
-              title: "پرداخت نقدی قرارداد",
-              date: "13 شهریور 1405",
-              regDate: "13 شهریور 1405",
-              amount: 66000000,
-              method: "نقد",
-              paymentType: "نقد",
-              forReason: "قرارداد سرویس و نگهداری بشماره : 5475",
-              customerName: "* حسینی فر",
-              buildingName: "حسینی فر چهاراه پادگان",
-              buildingAddress: "قزوین چهار راه پادگان نبش کوچه متانت ساختمان آریامهر",
-              ref: "CSH-5475-01",
-            },
-          ],
-          invoices: [],
-        };
-      } else {
-        contractDetailsMap[contractId] = {
-          months: generateInitialMonths(1405, 8500000),
-          payments: [],
-          invoices: [],
-        };
-      }
+      const contract = contracts.find((c) => c.id === contractId);
+      contractDetailsMap[contractId] = {
+        months: generateInitialMonths(1405, contract?.monthlyServiceFee || 0).map((month) => ({
+          ...month,
+          done: false,
+          paid: false,
+        })),
+        payments: [],
+        invoices: [],
+        breakdowns: [],
+      };
       saveStorage("tlift_contract_details", contractDetailsMap);
-    } else if (isContract5475 && contractDetailsMap[contractId].payments.length === 0) {
-      // Ensure contract 5475 has the payment from sshot-2.png
-      contractDetailsMap[contractId].payments = [
-        {
-          id: 1,
-          title: "پرداخت نقدی قرارداد",
-          date: "13 شهریور 1405",
-          regDate: "13 شهریور 1405",
-          amount: 66000000,
-          method: "نقد",
-          paymentType: "نقد",
-          forReason: "قرارداد سرویس و نگهداری بشماره : 5475",
-          customerName: "* حسینی فر",
-          buildingName: "حسینی فر چهاراه پادگان",
-          buildingAddress: "قزوین چهار راه پادگان نبش کوچه متانت ساختمان آریامهر",
-          ref: "CSH-5475-01",
-        },
-      ];
-      saveStorage("tlift_contract_details", contractDetailsMap);
+    }
+    const contract = contracts.find((item) => item.id === contractId);
+    if (contract) {
+      const serviceDay = getContractServiceDay(contract.no);
+      const officialFee = getContractOfficialFee(contract.no) ?? contract.monthlyServiceFee;
+      const monthNumbers: Record<string, number> = { فروردین: 1, اردیبهشت: 2, خرداد: 3, تیر: 4, مرداد: 5, شهریور: 6, مهر: 7, آبان: 8, آذر: 9, دی: 10, بهمن: 11, اسفند: 12 };
+      let changed = false;
+      contractDetailsMap[contractId].months = contractDetailsMap[contractId].months.map((month) => {
+        const monthNumber = monthNumbers[month.m];
+        if (!monthNumber) return month;
+        const plannedDate = `${month.y}/${String(monthNumber).padStart(2, "0")}/${String(serviceDay).padStart(2, "0")}`;
+        const targetAmount = typeof officialFee === "number" ? officialFee : month.amount;
+        if (month.plannedDate === plannedDate && month.amount === targetAmount) return month;
+        changed = true;
+        return { ...month, plannedDate, amount: targetAmount };
+      });
+      if (changed) saveStorage("tlift_contract_details", contractDetailsMap);
     }
     return contractDetailsMap[contractId];
   },
@@ -1112,6 +1337,11 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
+    scheduledServices = scheduledServices.map((service) => service.contractId === contractId && service.monthId === monthId ? { ...service, status: "done", actualDate: serviceData.doneDate, lastUpdated: Date.now() } : service);
+    saveStorage("tlift_scheduled_services", scheduledServices);
+    if (serviceData.partsList?.length) {
+      appStore.consumeTechnicianParts(serviceData.doneBy || serviceData.techs[0] || "", serviceData.partsList);
+    }
 
     // ثبت در لیست کارهای ثبت‌شده آفلاین در صورت عدم اتصال
     const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -1144,22 +1374,10 @@ export const appStore = {
     markMonthId?: number
   ) => {
     const details = appStore.getContractDetails(contractId);
-    const newRecord: PaymentRecord = { ...payment, id: Date.now() };
+    const newRecord: PaymentRecord = { ...payment, id: Date.now(), approvalStatus: "pending" };
 
-    let updatedMonths = details.months;
-    if (markMonthId) {
-      updatedMonths = details.months.map((m) =>
-        m.id === markMonthId
-          ? {
-              ...m,
-              paid: true,
-              paidDate: payment.date,
-              paidMethod: payment.method,
-              paidRef: payment.ref,
-            }
-          : m
-      );
-    }
+    // تا زمان تأیید مدیر، پرداخت وارد پرتال مشتری و وضعیت تسویه ماه نمی‌شود.
+    const updatedMonths = details.months;
 
     contractDetailsMap[contractId] = {
       ...details,
@@ -1168,6 +1386,8 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
+    const paymentContract = contracts.find((item) => item.id === contractId);
+    appStore.addNotification({ type: "payment", title: "پرداخت جدید منتظر تأیید", message: `${payment.amount.toLocaleString("fa-IR")} ریال برای ${paymentContract?.building.replace(/^\*\s*/, "") || "قرارداد"} ثبت شده است.`, contractId, contractNo: paymentContract?.no, buildingName: paymentContract?.building, paymentId: newRecord.id, actionStatus: "pending" });
     notifyListeners();
 
     // همگام‌سازی خودکار پس از ثبت پرداخت
@@ -1287,6 +1507,9 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
+    const breakdownContract = contracts.find((item) => item.id === contractId);
+    const isTicket = breakdown.report.startsWith("[تیکت]");
+    appStore.addNotification({ type: isTicket ? "ticket" : "breakdown", title: isTicket ? "پیام یا تیکت جدید مشتری" : "خرابی جدید ثبت شد", message: breakdown.report.replace(/^\[تیکت\]\s*/, "") || breakdown.description, contractId, contractNo: breakdownContract?.no, buildingName: breakdownContract?.building, breakdownId: newBreakdown.id, senderName: breakdown.declaredBy, actionStatus: "pending" });
     notifyListeners();
     return newBreakdown;
   },
@@ -1439,6 +1662,75 @@ export const appStore = {
     saveStorage("tlift_marketing_items", marketingItems);
     notifyListeners();
   },
+  // COMPANY ACCESS & GPS POLICY
+  getCompanyAccessSettings: () => companyAccessSettings,
+  updateCompanyAccessSettings: (settings: CompanyAccessSettings) => {
+    companyAccessSettings = settings;
+    saveStorage("tlift_company_access_settings_v1", companyAccessSettings);
+    notifyListeners();
+  },
+
+  // CONTRACT GPS LOCATIONS
+  getContractGeoLocation: (contractId: number) => contractGeoLocations.find((item) => item.contractId === contractId),
+  getAllContractGeoLocations: () => contractGeoLocations,
+  setContractGeoLocation: (location: ContractGeoLocation) => {
+    contractGeoLocations = [location, ...contractGeoLocations.filter((item) => item.contractId !== location.contractId)];
+    saveStorage("tlift_contract_geo_locations_v1", contractGeoLocations);
+    notifyListeners();
+  },
+
+  // TECHNICIAN PART DELIVERIES
+  getTechnicianPartDeliveries: () => technicianPartDeliveries,
+  addTechnicianPartDelivery: (delivery: Omit<TechnicianPartDelivery, "id">) => {
+    const item = { ...delivery, id: `delivery-${Date.now()}`, usedQuantity: delivery.usedQuantity || 0, remainingQuantity: delivery.remainingQuantity ?? delivery.quantity, status: delivery.status || "active" } as TechnicianPartDelivery;
+    technicianPartDeliveries = [item, ...technicianPartDeliveries];
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
+    notifyListeners();
+    return item;
+  },
+  removeTechnicianPartDelivery: (id: string) => {
+    technicianPartDeliveries = technicianPartDeliveries.filter((item) => item.id !== id);
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
+    notifyListeners();
+  },
+  consumeTechnicianParts: (technicianName: string, usedParts: ServicePartItem[]) => {
+    usedParts.forEach((used) => {
+      let needed = Number(used.qty || 0);
+      technicianPartDeliveries = technicianPartDeliveries.map((delivery) => {
+        if (needed <= 0 || delivery.technicianName !== technicianName || delivery.status !== "active" || (delivery.partName !== used.name && delivery.partCode !== used.code)) return delivery;
+        const take = Math.min(needed, delivery.remainingQuantity);
+        needed -= take;
+        const remainingQuantity = delivery.remainingQuantity - take;
+        return { ...delivery, usedQuantity: delivery.usedQuantity + take, remainingQuantity, status: remainingQuantity <= 0 ? "consumed" : "active" };
+      });
+    });
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
+    notifyListeners();
+  },
+
+  // ACTIVE SERVICE LOCKS
+  getActiveServiceAssignments: () => activeServiceAssignments,
+  startActiveService: (assignment: ActiveServiceAssignment) => {
+    // هر تکنسین فقط یک کار فعال و هر سرویس فقط یک مجری فعال دارد.
+    activeServiceAssignments = activeServiceAssignments.filter(
+      (item) =>
+        item.technicianName !== assignment.technicianName &&
+        !(item.contractId === assignment.contractId && item.monthId === assignment.monthId)
+    );
+    activeServiceAssignments = [...activeServiceAssignments, assignment];
+    saveStorage("tlift_active_service_assignments_v1", activeServiceAssignments);
+    notifyListeners();
+  },
+  finishActiveService: (contractId: number, monthId: number, technicianName?: string) => {
+    activeServiceAssignments = activeServiceAssignments.filter(
+      (item) =>
+        !(item.contractId === contractId && item.monthId === monthId) &&
+        !(technicianName && item.technicianName === technicianName)
+    );
+    saveStorage("tlift_active_service_assignments_v1", activeServiceAssignments);
+    notifyListeners();
+  },
+
   // SCHEDULED SERVICES
   getScheduledServices: () => scheduledServices,
   toggleScheduledServiceStatus: (id: string) => {
@@ -1640,6 +1932,13 @@ export const appStore = {
 };
 
 // React Hooks
+export function useNotifications() {
+  return useSyncExternalStore(
+    (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
+    () => notifications
+  );
+}
+
 export function useContracts() {
   return useSyncExternalStore(
     (callback) => {
@@ -1647,6 +1946,33 @@ export function useContracts() {
       return () => listeners.delete(callback);
     },
     () => contracts
+  );
+}
+
+export function useCompanyAccessSettings() {
+  return useSyncExternalStore(
+    (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
+    () => companyAccessSettings
+  );
+}
+
+export function useTechnicianPartDeliveries() {
+  return useSyncExternalStore(
+    (callback) => {
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    },
+    () => technicianPartDeliveries
+  );
+}
+
+export function useActiveServiceAssignments() {
+  return useSyncExternalStore(
+    (callback) => {
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    },
+    () => activeServiceAssignments
   );
 }
 
@@ -1727,6 +2053,16 @@ export function useChecklistCategories() {
       return () => listeners.delete(callback);
     },
     () => checklistCategories
+  );
+}
+
+export function useContractGeoLocations() {
+  return useSyncExternalStore(
+    (callback) => {
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    },
+    () => contractGeoLocations
   );
 }
 

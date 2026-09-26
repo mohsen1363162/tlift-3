@@ -11,8 +11,6 @@ import {
   WifiOff,
   ShieldCheck,
   RefreshCw,
-  FileDown,
-  Info,
 } from "lucide-react";
 import { usePWAInstall } from "../hooks/usePWAInstall";
 import { checkForAppUpdates, applyUpdateAndReload, APP_VERSION } from "../utils/appUpdater";
@@ -85,16 +83,16 @@ export default function AndroidAppModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-neutral-900 dark:text-white flex items-center gap-1.5">
-                <span>تلیفت همراه</span>
+                <span>برنامه آسمانسرا</span>
                 <span className="rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[11px] font-medium">
-                  فایل نصبی APK و اندروید
+                  نرم‌افزار مستقل گوشی
                 </span>
                 <span className="rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 text-[10px] font-mono">
                   v{APP_VERSION}
                 </span>
               </h2>
               <p className="text-[12px] text-neutral-500 dark:text-neutral-400">
-                اپلیکیشن اختصاصی نصبی تکنسین‌های سرویس و مدیریت آسانسور
+                اپلیکیشن اختصاصی آسمانسرا بدون نوار مرورگر و با آیکون مستقل روی صفحه اصلی
               </p>
             </div>
           </div>
@@ -109,52 +107,46 @@ export default function AndroidAppModal({
 
         {/* Content */}
         <div className="overflow-y-auto py-4 space-y-4 text-[13px] text-neutral-700 dark:text-neutral-300">
-          {/* بخش اول و ویژه: دانلود مستقیم فایل نصبی با پسوند APK */}
+          {/* نصب کاملاً مستقل برنامه بدون علامت کروم (WebAPK Standalone) */}
           <div className="rounded-2xl border-2 border-emerald-500/30 bg-emerald-50/70 p-4 dark:border-emerald-500/30 dark:bg-emerald-950/30 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-bold text-emerald-900 dark:text-emerald-200 text-[14px]">
-                <FileDown size={22} className="text-emerald-600 dark:text-emerald-400" />
-                <span>دانلود مستقیم فایل نصبی با پسوند APK</span>
-              </div>
-              <span className="rounded-full bg-emerald-600 text-white px-2 py-0.5 text-[10.5px] font-bold">
-                نسخه نصبی گوشی
-              </span>
+            <div className="flex items-center gap-2 font-bold text-emerald-900 dark:text-emerald-200 text-[14px]">
+              <ShieldCheck size={22} className="text-emerald-600 dark:text-emerald-400" />
+              <span>نصب برنامه اختصاصی آسمانسرا روی گوشی</span>
             </div>
-
             <p className="text-[12px] leading-relaxed text-emerald-950/80 dark:text-emerald-300/90">
-              این فایل با پسوند رسمی <strong>.apk</strong> است و مستقیماً توسط سیستم‌عامل اندروید نصب می‌گردد. پس از دانلود، کافیست روی فایل لمس کرده و گزینه <strong>نصب (Install)</strong> را بزنید.
+              این برنامه مانند برنامه‌های بازار، باد صبا و لارک پلیر به عنوان یک <strong>نرم‌افزار مستقل با نام «آسمانسرا»</strong> روی صفحه اصلی نصب می‌شود. پس از نصب، هیچ نوار آدرس یا علامت کروم نخواهد داشت و به صورت تمام‌صفحه و آفلاین کار می‌کند.
             </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              <a
-                href="/Telift.apk"
-                download="Telift.apk"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 px-3 text-white font-bold shadow-md hover:bg-emerald-700 active:scale-[0.98] transition text-[13px]"
+            {isInstalled ? (
+              <div className="rounded-xl bg-emerald-600 px-3 py-3 text-center font-bold text-white shadow-sm flex items-center justify-center gap-2">
+                <Check size={18} />
+                <span>برنامه آسمانسرا روی این گوشی نصب است و به صورت نرم‌افزار مستقل اجرا می‌شود</span>
+              </div>
+            ) : isInstallable ? (
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                disabled={installing}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-bold text-white shadow-lg hover:bg-emerald-700 active:scale-95 transition disabled:opacity-60"
               >
-                <Download size={18} />
-                <span>دانلود Telift.apk (۷.۳ MB)</span>
-              </a>
-
-              <a
-                href="/Telift.apk"
-                download="asemansara.apk"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-600/30 bg-white dark:bg-neutral-800 py-3 px-3 text-emerald-800 dark:text-emerald-300 font-medium hover:bg-emerald-50 dark:hover:bg-neutral-750 transition text-[12px]"
-              >
-                <Download size={15} />
-                <span>لینک دانلود کمکی (asemansara.apk)</span>
-              </a>
-            </div>
-
-            <div className="text-[11px] text-emerald-800/90 dark:text-emerald-400 flex items-start gap-1.5 bg-emerald-100/50 dark:bg-emerald-900/30 p-2 rounded-lg">
-              <Info size={14} className="shrink-0 mt-0.5" />
-              <span>
-                نکته: در صورت مشاهده پیام امنیتی گوشی، روی <strong>Settings</strong> و سپس فعال کردن <strong>Allow from this source (اجازه نصب از این منبع)</strong> بزنید تا نصب کامل شود.
-              </span>
-            </div>
+                <Download size={20} />
+                <span>{installing ? "در حال افزودن و نصب آسمانسرا..." : "نصب فوری «آسمانسرا» روی صفحه اصلی"}</span>
+              </button>
+            ) : (
+              <div className="rounded-xl bg-white/90 p-3 text-[12px] leading-6 dark:bg-neutral-900/80 space-y-1.5 border border-emerald-200 dark:border-emerald-900">
+                <div className="font-bold text-emerald-900 dark:text-emerald-300">
+                  راهنمای نصب به عنوان نرم‌افزار بدون علامت مرورگر:
+                </div>
+                <div>
+                  ۱. در بالای مرورگر، منوی سه‌نقطه (⋮) را لمس کنید.
+                </div>
+                <div>
+                  ۲. گزینه <strong>«نصب برنامه» (Install app)</strong> یا <strong>«افزودن به صفحه اصلی» (Add to Home screen)</strong> را انتخاب نمایید.
+                </div>
+                <div>
+                  ۳. نام برنامه به صورت خودکار <strong>«آسمانسرا»</strong> ذخیره شده و بدون آیکون کروم مانند یک برنامه عادی در لیست اپلیکیشن‌های شما قرار می‌گیرد.
+                </div>
+              </div>
+            )}
           </div>
 
           {/* بخش دوم: دکمه آپدیت و بروزرسانی نرم‌افزار */}
@@ -224,38 +216,10 @@ export default function AndroidAppModal({
             </div>
           </div>
 
-          {/* حالت نصب مستقیم در صورت پشتیبانی مرورگر */}
-          {isInstalled ? (
-            <div className="rounded-xl bg-emerald-50 p-3 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900 flex items-center gap-2.5">
-              <ShieldCheck size={22} className="text-emerald-600 shrink-0" />
-              <div>
-                <div className="font-bold">برنامه روی این گوشی یا دستگاه نصب است!</div>
-                <div className="text-[11.5px] opacity-90">
-                  می‌توانید مستقیماً از صفحه اصلی گوشی خود وارد شوید.
-                </div>
-              </div>
-            </div>
-          ) : isInstallable ? (
-            <div className="rounded-xl bg-blue-50 p-4 border border-blue-200 dark:bg-blue-950/40 dark:border-blue-900 text-center space-y-2.5">
-              <div className="font-bold text-blue-900 dark:text-blue-200">
-                یا می‌توانید مستقیماً از طریق مرورگر نصب کنید:
-              </div>
-              <button
-                type="button"
-                onClick={handleInstallClick}
-                disabled={installing}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-white font-bold shadow-md hover:bg-blue-700 active:scale-[0.98] transition disabled:opacity-60"
-              >
-                <Download size={18} />
-                <span>{installing ? "در حال نصب..." : "نصب مستقیم اپلیکیشن از مرورگر (PWA)"}</span>
-              </button>
-            </div>
-          ) : null}
-
           {/* آدرس مستقیم برنامه برای باز کردن روی گوشی */}
           <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 space-y-2 bg-neutral-50/70 dark:bg-neutral-850">
             <div className="font-bold text-neutral-900 dark:text-white text-[12px]">
-              آدرس مستقیم نسخه موبایل و تلیفت همراه:
+              آدرس مستقیم نسخه موبایل و برنامه آسمانسرا:
             </div>
             <div className="flex items-center gap-1.5 rounded-lg bg-white p-1.5 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700">
               <span className="flex-1 truncate font-mono text-[11.5px] text-left text-neutral-500" dir="ltr">

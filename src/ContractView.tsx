@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Pin,
   ChevronDown,
@@ -41,6 +41,7 @@ import {
   Sparkles,
   Info,
   Check,
+  MoreVertical,
 } from "lucide-react";
 import type { Theme } from "./theme";
 import { Contract } from "./data";
@@ -50,6 +51,7 @@ import ServiceReportView from "./components/ServiceReportView";
 import { ContractPaymentsView } from "./components/ContractPaymentsView";
 import ContractBreakdownsView from "./components/ContractBreakdownsView";
 import ContractServicesListView from "./components/ContractServicesListView";
+import ServiceContractPreviewModal from "./components/ServiceContractPreviewModal";
 import BreakdownModal from "./components/BreakdownModal";
 import { Field, inputCls, SearchSelect, DatePicker } from "./ui";
 import { appStore, useContractDetails, MonthService, PaymentRecord, Invoice } from "./store";
@@ -59,7 +61,7 @@ const MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "�
 
 export default function ContractView({
   t,
-  contract,
+  contract: initialContract,
   initialSubView = "overview",
   onOpenServiceReport,
 }: {
@@ -68,10 +70,26 @@ export default function ContractView({
   initialSubView?: "overview" | "payments" | "breakdowns" | "services";
   onOpenServiceReport?: (monthService: MonthService, contract: Contract) => void;
 }) {
+  const [contract, setContract] = useState<Contract>(initialContract);
+  const [contractEditorMode, setContractEditorMode] = useState<"edit" | "renew" | "representatives" | null>(null);
+  const [contractDraft, setContractDraft] = useState<Contract>(initialContract);
   const [toast, setToast] = useState<string | null>(null);
+  const [showServiceContractPreview, setShowServiceContractPreview] = useState(false);
   const notify = (m: string) => {
     setToast(m);
     setTimeout(() => setToast(null), 2500);
+  };
+  useEffect(() => { setContract(initialContract); }, [initialContract]);
+  const openContractEditor = (mode: "edit" | "renew" | "representatives") => {
+    setContractDraft({ ...contract });
+    setContractEditorMode(mode);
+  };
+  const setContractField = (key: keyof Contract, value: string | number) => setContractDraft((current) => ({ ...current, [key]: value }));
+  const saveContractEditor = () => {
+    const saved = contractEditorMode === "renew" ? appStore.renewContract(contractDraft) : (appStore.updateContract(contractDraft), contractDraft);
+    setContract(saved);
+    setContractEditorMode(null);
+    notify(contractEditorMode === "renew" ? "قرارداد تمدید و دوره جدید سرویس ایجاد شد" : "اطلاعات قرارداد ذخیره شد");
   };
 
   const [subView, setSubView] = useState<"overview" | "payments" | "breakdowns" | "services">(initialSubView);
@@ -94,6 +112,52 @@ export default function ContractView({
   const [quickPayMethod, setQuickPayMethod] = useState<string>("کارت به کارت");
   const [quickPayRef, setQuickPayRef] = useState<string>("");
 
+  // Floating Quick-View Popover State (پنجره نمای سریع سرویس طبق تصویر ارسالی)
+  const [quickViewMonth, setQuickViewMonth] = useState<MonthService | null>(null);
+  const [quickViewPos, setQuickViewPos] = useState<{ top: number; left: number } | null>(null);
+  const quickViewTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const openQuickView = (s: MonthService, targetEl: HTMLElement) => {
+    if (quickViewTimerRef.current) clearTimeout(quickViewTimerRef.current);
+    const rect = targetEl.getBoundingClientRect();
+    const popoverWidth = Math.min(580, window.innerWidth - 24);
+    const popoverHeight = 440;
+
+    // Position vertically above the card:
+    let top = rect.top - popoverHeight - 10;
+    // If not enough room on top, place below the card
+    if (top < 12) {
+      top = Math.max(12, rect.bottom + 8);
+    }
+    // If still off bottom of screen, clamp within viewport
+    if (top + popoverHeight > window.innerHeight - 12) {
+      top = Math.max(12, window.innerHeight - popoverHeight - 12);
+    }
+
+    // Position horizontally centered on the card:
+    let left = rect.left + rect.width / 2 - popoverWidth / 2;
+    if (left + popoverWidth > window.innerWidth - 14) {
+      left = window.innerWidth - popoverWidth - 14;
+    }
+    if (left < 14) {
+      left = 14;
+    }
+
+    setQuickViewPos({ top, left });
+    setQuickViewMonth(s);
+  };
+
+  const scheduleCloseQuickView = () => {
+    if (quickViewTimerRef.current) clearTimeout(quickViewTimerRef.current);
+    quickViewTimerRef.current = setTimeout(() => {
+      setQuickViewMonth(null);
+    }, 280);
+  };
+
+  const cancelCloseQuickView = () => {
+    if (quickViewTimerRef.current) clearTimeout(quickViewTimerRef.current);
+  };
+
   const [serviceIdx, setServiceIdx] = useState<number | null>(null);
   const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
 
@@ -105,7 +169,7 @@ export default function ContractView({
   }, [months, selectedMonthId]);
 
   // Financial Calculations
-  const baseContractPayable = months.reduce((acc, m) => acc + m.amount, 0);
+  const baseContractPayable = months.filter((m) => m.done).reduce((acc, m) => acc + m.amount, 0);
   const extraInvoicesAmount = invoices.reduce((acc, i) => acc + i.amount, 0);
   const totalPayable = baseContractPayable + extraInvoicesAmount;
   const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
@@ -120,12 +184,15 @@ export default function ContractView({
     ["مانده بدهی قرارداد", money(debt)],
     ["مانده بدهی ساختمان", money(debt)],
     ["مانده مشتری", money(debt)],
-    ["نوع قرارداد", "سرویس نگهداری - به ازای سرویس"],
+    ["نام ساختمان", contract.building],
     ["مسئول هماهنگی/مشتری", contract.manager],
+    ["محل کلید سه‌گوش", contract.triangleKeyLocation || "ثبت نشده"],
+    ["آخرین نظافت", contract.cleaningDates?.at(-1) || "ثبت نشده"],
+    ["آخرین تعویض روغن موتور", contract.motorOilChangeDates?.at(-1) || "ثبت نشده"],
   ];
 
   const actions = [
-    ["چاپ تاریخچه قرارداد", Printer],
+    ["چاپ قرارداد سرویس و نگهداری", Printer],
     ["چاپ کاردکس قرارداد", Printer],
     ["چاپ فاکتور سرویس ها", Printer],
     ["پرداخت ها", CreditCard],
@@ -316,7 +383,7 @@ export default function ContractView({
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => notify("تمدید قرارداد")}
+          onClick={() => openContractEditor("renew")}
           className="flex items-center gap-1 rounded bg-violet-500 px-4 py-1.5 text-[12.5px] text-white hover:bg-violet-600"
         >
           <ChevronDown size={13} /> تمدید قرارداد
@@ -352,6 +419,9 @@ export default function ContractView({
       >
         {actions.map(([label, I]) => {
           const isPayments = label === "پرداخت ها";
+          const isServiceContractPrint = label === "چاپ قرارداد سرویس و نگهداری";
+          const isEditContract = label === "ویرایش قرارداد";
+          const isEditRepresentatives = label === "ویرایش نمایندگان";
           return (
             <div key={label} className="flex items-center gap-1">
               <button
@@ -359,6 +429,12 @@ export default function ContractView({
                 onClick={() => {
                   if (isPayments) {
                     setSubView("payments");
+                  } else if (isServiceContractPrint) {
+                    setShowServiceContractPreview(true);
+                  } else if (isEditContract) {
+                    openContractEditor("edit");
+                  } else if (isEditRepresentatives) {
+                    openContractEditor("representatives");
                   } else {
                     notify(label);
                   }
@@ -522,16 +598,17 @@ export default function ContractView({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => {
+                  onMouseEnter={(e) => openQuickView(s, e.currentTarget)}
+                  onMouseLeave={scheduleCloseQuickView}
+                  onClick={(e) => {
                     setSelectedMonthId(s.id);
-                    const idx = months.findIndex((m) => m.id === s.id);
-                    if (idx !== -1) setServiceIdx(idx);
+                    openQuickView(s, e.currentTarget);
                   }}
                   onDoubleClick={() => {
                     const idx = months.findIndex((m) => m.id === s.id);
                     if (idx !== -1) setServiceIdx(idx);
                   }}
-                  title="کلیک برای ثبت یا ویرایش گزارش سرویس این ماه"
+                  title="برای مشاهده پنجره نمای سریع سرویس، ماوس را روی کارت ببرید یا کلیک کنید"
                   className={`relative flex h-[82px] cursor-pointer flex-col items-center justify-between p-2 transition ${
                     s.done
                       ? isSelected
@@ -549,19 +626,18 @@ export default function ContractView({
                   {/* Top info row: day + quick window icon */}
                   <div className="flex w-full items-center justify-between">
                     <span className="text-[13.5px] font-bold font-mono">
-                      {fa(26)}
+                      {fa(s.plannedDate?.split(/[/-]/).pop() || "-")}
                     </span>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        const idx = months.findIndex((m) => m.id === s.id);
-                        if (idx !== -1) setServiceIdx(idx);
+                        openQuickView(s, (e.currentTarget.closest('[role="button"]') as HTMLElement) || e.currentTarget);
                       }}
-                      title="ثبت / ویرایش گزارش سرویس"
+                      title="نمای سریع سرویس"
                       className="rounded p-0.5 text-neutral-400 hover:text-white hover:bg-white/10"
                     >
-                      <FileText size={12} />
+                      <MoreVertical size={13} />
                     </button>
                   </div>
 
@@ -651,6 +727,276 @@ export default function ContractView({
           ))}
         </div>
       </div>
+
+      {/* Floating Quick View Popover Window (نمای سریع سرویس طبق تصویر ارسالی) */}
+      {quickViewMonth && quickViewPos && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[0.5px]"
+            onClick={() => setQuickViewMonth(null)}
+          />
+          <div
+            onMouseEnter={cancelCloseQuickView}
+            onMouseLeave={scheduleCloseQuickView}
+            style={{
+              top: `${quickViewPos.top}px`,
+              left: `${quickViewPos.left}px`,
+            }}
+            className="fixed z-50 w-[570px] max-w-[95vw] rounded-2xl border border-slate-200/90 dark:border-neutral-700 bg-white dark:bg-[#1a1c22] p-4 text-neutral-800 dark:text-neutral-100 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] animate-in fade-in zoom-in-95 duration-150 select-none"
+            dir="rtl"
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-slate-100 dark:border-neutral-800/80 pb-3 mb-3">
+              <div>
+                <span className="text-[11px] font-medium text-slate-400 dark:text-neutral-400 block mb-0.5">
+                  نمای سریع سرویس
+                </span>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-black font-mono text-slate-800 dark:text-white">
+                    سرویس {fa(quickViewMonth.serviceNo || 774480 + quickViewMonth.id)}
+                  </h3>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      quickViewMonth.done
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                    }`}
+                  >
+                    {quickViewMonth.done ? "انجام شده" : "برنامه‌ریزی شده"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/80 px-3 py-1 font-mono text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-700/50 shadow-xs">
+                  {fa(quickViewMonth.date || quickViewMonth.plannedDate || "۱۴۰۵/۰۶/۲۵")}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => notify("اطلاعات سرویس بروزرسانی شد")}
+                  title="بروزرسانی داده‌ها"
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 transition"
+                >
+                  <RotateCcw size={14} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQuickViewMonth(null)}
+                  title="بستن"
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Two Columns Body */}
+            <div className="grid grid-cols-12 gap-3.5">
+              {/* Right Side: Service Details & Tech Transit (7 cols) */}
+              <div className="col-span-7 flex flex-col gap-2.5 text-xs">
+                {/* Dates Row */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-slate-200/80 dark:border-neutral-700/70 bg-slate-50/60 dark:bg-neutral-800/40 p-2 text-right">
+                    <span className="text-[10px] text-slate-400 block mb-0.5">تاریخ انجام</span>
+                    <span className="font-mono font-bold text-[12.5px] text-slate-800 dark:text-neutral-100">
+                      {quickViewMonth.done && quickViewMonth.date ? fa(quickViewMonth.date) : (quickViewMonth.date ? fa(quickViewMonth.date) : "انجام نشده")}
+                    </span>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200/80 dark:border-neutral-700/70 bg-slate-50/60 dark:bg-neutral-800/40 p-2 text-right">
+                    <span className="text-[10px] text-slate-400 block mb-0.5">تاریخ برنامه‌ریزی</span>
+                    <span className="font-mono font-bold text-[12.5px] text-slate-800 dark:text-neutral-100">
+                      {fa(quickViewMonth.plannedDate || `${quickViewMonth.y}/${String(quickViewMonth.id).padStart(2, "0")}/24`)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Technician Name */}
+                <div className="rounded-xl border border-slate-200/80 dark:border-neutral-700/70 bg-slate-50/60 dark:bg-neutral-800/40 p-2 text-right">
+                  <span className="text-[10px] text-slate-400 block mb-0.5">سرویسکار انجام‌دهنده</span>
+                  <span className="font-bold text-[12.5px] text-slate-800 dark:text-neutral-100">
+                    {quickViewMonth.doneBy || quickViewMonth.techs?.[0] || contract.technician || "بهمن کشاورز"}
+                  </span>
+                </div>
+
+                {/* Section: تردد سرویسکارها */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1 font-bold text-[11px] text-slate-700 dark:text-slate-200">
+                    <span className="h-3.5 w-1 rounded-full bg-sky-500" />
+                    <span>تردد سرویسکارها</span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/80 dark:border-neutral-700/70 bg-white dark:bg-neutral-800/60 p-2 flex items-center justify-between shadow-2xs">
+                    <span className="font-semibold text-slate-700 dark:text-neutral-200">
+                      {quickViewMonth.doneBy || quickViewMonth.techs?.[0] || contract.technician || "بهمن کشاورز"}
+                    </span>
+                    <div className="flex items-center gap-1.5 font-mono text-[10.5px]">
+                      <span className="rounded-md border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-900 px-2 py-0.5 text-slate-600 dark:text-slate-300">
+                        ورود {fa(quickViewMonth.inTime || "۱۱:۳۹")}
+                      </span>
+                      <span className="rounded-md border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-900 px-2 py-0.5 text-slate-600 dark:text-slate-300">
+                        خروج {fa(quickViewMonth.outTime || "۱۲:۱۰")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: گزارش سرویس */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1 font-bold text-[11px] text-slate-700 dark:text-slate-200">
+                    <span className="h-3.5 w-1 rounded-full bg-sky-500" />
+                    <span>گزارش سرویس</span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/80 dark:border-neutral-700/70 bg-white dark:bg-neutral-800/60 p-2 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed min-h-[38px] shadow-2xs">
+                    {quickViewMonth.report || (quickViewMonth.done ? "سرویس آسانسور شهریور ماه صورت گرفت بدهی فاکتور شد" : "هنوز گزارشی برای این سرویس ثبت نشده است")}
+                  </div>
+                </div>
+
+                {/* Section: قطعات مصرف‌شده */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1 font-bold text-[11px] text-slate-700 dark:text-slate-200">
+                    <span className="h-3.5 w-1 rounded-full bg-sky-500" />
+                    <span>قطعات مصرف‌شده</span>
+                  </div>
+                  <div className="text-[11px]">
+                    {quickViewMonth.partsList && quickViewMonth.partsList.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {quickViewMonth.partsList.map((p, idx) => (
+                          <span key={idx} className="rounded-md border bg-slate-50 dark:bg-neutral-800 px-2 py-0.5 font-medium text-slate-700 dark:text-neutral-200">
+                            {p.name} ({fa(p.quantity)} عدد)
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="font-bold text-sky-600 dark:text-sky-400">
+                        • ۰ قلم
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Left Side: خلاصه مالی (5 cols) */}
+              <div className="col-span-5 rounded-2xl border border-sky-100 dark:border-sky-900/40 bg-gradient-to-b from-[#e0f2fe]/45 via-[#f0f9ff]/30 to-[#ecfdf5]/40 dark:from-slate-900/90 dark:to-slate-850/90 p-3.5 flex flex-col justify-between relative overflow-hidden">
+                <div className="absolute -top-10 -left-10 h-32 w-32 rounded-full bg-sky-400/10 pointer-events-none blur-xl" />
+
+                <div>
+                  {/* Financial Header */}
+                  <div className="flex items-center gap-1.5 border-b border-sky-200/50 dark:border-sky-800/40 pb-2 mb-2">
+                    <span className="h-5 w-1 rounded-full bg-sky-500" />
+                    <div>
+                      <div className="font-bold text-[13px] text-slate-800 dark:text-white leading-tight">
+                        خلاصه مالی
+                      </div>
+                      <div className="text-[9.5px] text-slate-400 dark:text-slate-400">
+                        ریز هزینه‌های سرویس
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Financial Rows */}
+                  <div className="flex flex-col gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+                    <div className="flex items-center justify-between border-b border-dashed border-sky-200/40 dark:border-sky-800/30 pb-1">
+                      <span>مبلغ سرویس</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-neutral-100">
+                        {fa((quickViewMonth.amount || contract.monthlyAmount || 7500000).toLocaleString())} ریال
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-dashed border-sky-200/40 dark:border-sky-800/30 pb-1">
+                      <span>قطعات</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-neutral-100">
+                        {fa((quickViewMonth.partsAmount || 0).toLocaleString())} ریال
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-dashed border-sky-200/40 dark:border-sky-800/30 pb-1">
+                      <span>دستمزد</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-neutral-100">
+                        {fa((quickViewMonth.wage || 0).toLocaleString())} ریال
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-dashed border-sky-200/40 dark:border-sky-800/30 pb-1">
+                      <span>ایاب‌وذهاب</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-neutral-100">
+                        {fa((quickViewMonth.trip || 0).toLocaleString())} ریال
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-dashed border-sky-200/40 dark:border-sky-800/30 pb-1">
+                      <span>تخفیف</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-neutral-100">
+                        {fa((quickViewMonth.discount || 0).toLocaleString())} ریال
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pb-1">
+                      <span>مالیات</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-neutral-100">
+                        {fa((quickViewMonth.tax || 0).toLocaleString())} ریال
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Final Total Box */}
+                <div className="mt-3 rounded-xl border border-emerald-300/70 dark:border-emerald-800/60 bg-[#dcfce7]/75 dark:bg-emerald-950/60 p-2.5 flex items-center justify-between">
+                  <span className="text-[11.5px] font-bold text-slate-800 dark:text-neutral-200">
+                    مبلغ نهایی سرویس
+                  </span>
+                  <span className="font-mono font-black text-[13.5px] text-emerald-700 dark:text-emerald-400">
+                    {fa(((quickViewMonth.amount || contract.monthlyAmount || 7500000) + (quickViewMonth.partsAmount || 0) + (quickViewMonth.wage || 0) + (quickViewMonth.trip || 0) - (quickViewMonth.discount || 0) + (quickViewMonth.tax || 0)).toLocaleString())} ریال
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Footer */}
+            <div className="mt-3.5 pt-2.5 border-t border-slate-100 dark:border-neutral-800/80 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const idx = months.findIndex((m) => m.id === quickViewMonth.id);
+                    setQuickViewMonth(null);
+                    if (idx !== -1) setServiceIdx(idx);
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-purple-700 active:scale-95 transition"
+                >
+                  <FileText size={13} />
+                  <span>ویرایش کامل سرویس</span>
+                </button>
+
+                {!quickViewMonth.paid && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMonthId(quickViewMonth.id);
+                      setQuickPayAmount(quickViewMonth.amount.toLocaleString("en-US"));
+                      setQuickPayModalMonth(quickViewMonth);
+                      setQuickViewMonth(null);
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition"
+                  >
+                    <Zap size={13} className="fill-white" />
+                    <span>پرداخت سریع</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setQuickViewMonth(null)}
+                className="rounded-xl border border-slate-200 dark:border-neutral-700 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-neutral-800 transition"
+              >
+                بستن
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
         {/* Selected Month Summary Box (باکس جامع خلاصه گزارش، سرویسکار و قطعات مصرفی) */}
         {selectedMonthObj && (
@@ -1298,8 +1644,50 @@ export default function ContractView({
         }}
       />
 
+      {contractEditorMode && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/65 p-4" onClick={() => setContractEditorMode(null)}>
+          <div dir="rtl" className={`max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl border p-5 shadow-2xl ${t.panel} ${t.border}`} onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div><h2 className={`text-base font-bold ${t.text}`}>{contractEditorMode === "renew" ? "تمدید قرارداد" : contractEditorMode === "representatives" ? "ویرایش مدیر ساختمان و نمایندگان" : "ویرایش قرارداد"}</h2><p className={`mt-1 text-xs ${t.sub}`}>{contract.building.replace(/^\*\s*/, "")} — قرارداد {contract.no}</p></div>
+              <button type="button" onClick={() => setContractEditorMode(null)} className={`rounded-lg p-2 ${t.hover}`}><X size={18}/></button>
+            </div>
+            {contractEditorMode === "renew" && <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 text-xs leading-6 text-violet-400">با ذخیره تمدید، قرارداد قبلی در تاریخچه حفظ می‌شود و ۱۲ ردیف سرویس انجام‌نشده برای دوره جدید ایجاد خواهد شد.</div>}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {contractEditorMode === "edit" && <>
+                <Field label="شماره قرارداد"><input value={contractDraft.no} onChange={(e) => setContractField("no", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="نام ساختمان"><input value={contractDraft.building.replace(/^\*\s*/, "")} onChange={(e) => setContractField("building", `* ${e.target.value}`)} className={inputCls(t)}/></Field>
+                <Field label="شماره اشتراک"><input value={contractDraft.subscriptionNo || ""} onChange={(e) => setContractField("subscriptionNo", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="منطقه"><input value={contractDraft.zone || ""} onChange={(e) => setContractField("zone", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="تاریخ شروع"><input value={contractDraft.start || ""} onChange={(e) => setContractField("start", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="تاریخ پایان"><input value={contractDraft.end || ""} onChange={(e) => setContractField("end", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="مبلغ ماهیانه (ریال)"><input inputMode="numeric" value={contractDraft.monthlyServiceFee || ""} onChange={(e) => setContractField("monthlyServiceFee", Number(e.target.value.replace(/\D/g, "")))} className={inputCls(t)}/></Field>
+                <Field label="محل کلید سه‌گوش"><input value={contractDraft.triangleKeyLocation || ""} onChange={(e) => setContractField("triangleKeyLocation", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="آدرس ساختمان" className="sm:col-span-2"><textarea value={contractDraft.address || ""} onChange={(e) => setContractField("address", e.target.value)} className={`min-h-20 w-full rounded border p-2 text-sm ${t.input}`}/></Field>
+                <Field label="توضیحات اضافی" className="sm:col-span-2"><textarea value={contractDraft.additionalNotes || ""} onChange={(e) => setContractField("additionalNotes", e.target.value)} className={`min-h-20 w-full rounded border p-2 text-sm ${t.input}`}/></Field>
+              </>}
+              {contractEditorMode === "renew" && <>
+                <Field label="تاریخ شروع دوره جدید"><input value={contractDraft.start || ""} onChange={(e) => setContractField("start", e.target.value)} placeholder="۱۴۰۶/۰۱/۰۱" className={inputCls(t)}/></Field>
+                <Field label="تاریخ پایان دوره جدید"><input value={contractDraft.end || ""} onChange={(e) => setContractField("end", e.target.value)} placeholder="۱۴۰۶/۱۲/۲۹" className={inputCls(t)}/></Field>
+                <Field label="مبلغ ماهیانه جدید (ریال)" className="sm:col-span-2"><input inputMode="numeric" value={contractDraft.monthlyServiceFee || ""} onChange={(e) => setContractField("monthlyServiceFee", Number(e.target.value.replace(/\D/g, "")))} className={inputCls(t)}/></Field>
+              </>}
+              {contractEditorMode === "representatives" && <>
+                <Field label="مدیر ساختمان / کارفرما"><input value={contractDraft.manager || ""} onChange={(e) => setContractField("manager", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="شماره همراه مدیر"><input dir="ltr" value={contractDraft.phone || ""} onChange={(e) => setContractField("phone", e.target.value.replace(/\D/g, ""))} className={inputCls(t)}/></Field>
+                <Field label="مسئول هماهنگی"><input value={contractDraft.coordinator || ""} onChange={(e) => setContractField("coordinator", e.target.value)} className={inputCls(t)}/></Field>
+                <Field label="شماره همراه مسئول هماهنگی"><input dir="ltr" value={contractDraft.coordinatorPhone || ""} onChange={(e) => setContractField("coordinatorPhone", e.target.value.replace(/\D/g, ""))} className={inputCls(t)}/></Field>
+              </>}
+            </div>
+            <div className="mt-5 flex gap-2"><button type="button" onClick={saveContractEditor} className="rounded-xl bg-violet-600 px-6 py-2.5 text-sm font-bold text-white">{contractEditorMode === "renew" ? "ثبت تمدید قرارداد" : "ذخیره تغییرات"}</button><button type="button" onClick={() => setContractEditorMode(null)} className={`rounded-xl border px-5 py-2.5 text-sm ${t.border}`}>انصراف</button></div>
+          </div>
+        </div>
+      )}
+
+      {showServiceContractPreview && (
+        <ServiceContractPreviewModal contract={contract} t={t} onClose={() => setShowServiceContractPreview(false)} onShowToast={notify} />
+      )}
+
       {toast && (
-        <div className="fixed bottom-16 left-1/2 z-50 -translate-x-1/2 rounded bg-neutral-800 px-4 py-2 text-[12.5px] text-white shadow-lg">
+        <div className="fixed bottom-16 left-1/2 z-[100] -translate-x-1/2 rounded bg-neutral-800 px-4 py-2 text-[12.5px] text-white shadow-lg">
           {toast}
         </div>
       )}

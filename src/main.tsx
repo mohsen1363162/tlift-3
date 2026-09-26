@@ -8,6 +8,39 @@ import { Toaster } from './components/ui/toaster';
 import './index.css';
 import { startCloudSync } from './cloudSync';
 
+// بروزرسانی PWA: در هر بار ورود/بازگشت به صفحه، نسخه جدید Service Worker
+// مستقیماً از سرور بررسی می‌شود. پس از فعال‌شدن نسخه تازه فقط یک‌بار صفحه
+// بازنشانی می‌شود تا کاربر روی فایل‌های نسخه قبلی باقی نماند.
+// در Preview توسعه، Service Worker قبلی را حذف می‌کنیم تا کش قدیمی باعث
+// صفحه سفید یا reload پی‌درپی نشود. در نسخه production رفتار PWA حفظ می‌شود.
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => void registration.unregister());
+  });
+}
+
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  // تعویض Service Worker نباید وسط تکمیل فرم یا ثبت قرارداد صفحه را به خانه برگرداند.
+  // نسخه تازه در بازشدن بعدی برنامه اعمال می‌شود و آپدیت دستی همچنان در دسترس است.
+  const updateServiceWorker = async () => {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration("/");
+      await registration?.update();
+      if (registration?.waiting) {
+        registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      }
+    } catch {
+      /* آفلاین است؛ نسخه موجود بدون اختلال اجرا می‌شود */
+    }
+  };
+
+  window.addEventListener("load", updateServiceWorker);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") updateServiceWorker();
+  });
+  window.setInterval(updateServiceWorker, 30 * 60 * 1000);
+}
+
 // شروع همگام‌سازی ابری (Supabase) — در صورت قطع بودن اینترنت، آفلاین ادامه می‌دهد
 startCloudSync().catch(() => {
   /* بدون اینترنت یا خطای سرور: اپ به‌صورت آفلاین کار می‌کند */

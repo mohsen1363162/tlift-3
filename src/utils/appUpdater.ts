@@ -1,8 +1,8 @@
 /**
- * مدیریت بروزرسانی و آپدیت نرم‌افزار (تلیفت همراه و نسخه دسکتاپ)
+ * مدیریت بروزرسانی و آپدیت نرم‌افزار (برنامه آسمانسرا و نسخه دسکتاپ)
  */
 
-export const APP_VERSION = "3.5.0";
+export const APP_VERSION = "3.12.2";
 export const APP_BUILD_DATE = "شهریور ۱۴۰۵";
 
 export interface UpdateCheckResult {

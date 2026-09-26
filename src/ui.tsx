@@ -138,9 +138,18 @@ export function DatePicker({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [m, setM] = useState(4);
-  const [y, setY] = useState(1405);
+  const parsedDate = value.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  const [m, setM] = useState(parsedDate ? Math.max(0, Math.min(11, Number(parsedDate[2]) - 1)) : 0);
+  const [y, setY] = useState(parsedDate ? Number(parsedDate[1]) : 1405);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const parsed = value.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+    if (parsed) {
+      setY(Number(parsed[1]));
+      setM(Math.max(0, Math.min(11, Number(parsed[2]) - 1)));
+    }
+  }, [value]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {

@@ -23,6 +23,8 @@ import {
   X,
 } from "lucide-react";
 import type { Theme } from "./theme";
+import { parseBuildingsCsv } from "./utils/buildingsCsv";
+import { downloadFullBackup, restoreFullBackup } from "./utils/fullBackup";
 import { appStore, useContracts, useCustomers } from "./store";
 import {
   parseContractsCsv,
@@ -46,7 +48,7 @@ export default function CsvUploadPage({
   onOpenContracts,
   onOpenCustomers,
 }: CsvUploadPageProps) {
-  const [activeDataset, setActiveDataset] = useState<"contracts" | "customers">(initialType);
+  const [activeDataset, setActiveDataset] = useState<"contracts" | "customers" | "buildings">(initialType);
 
   useEffect(() => {
     if (initialType) {
@@ -55,18 +57,40 @@ export default function CsvUploadPage({
   }, [initialType]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
+  const [backupMessage, setBackupMessage] = useState("");
+
+  const handleBackupDownload = () => {
+    const count = downloadFullBackup();
+    setBackupMessage(`پشتیبان کامل با ${count.toLocaleString("fa-IR")} بخش اطلاعاتی دانلود شد.`);
+  };
+
+  const handleBackupRestore = async (file?: File) => {
+    if (!file) return;
+    try {
+      const result = await restoreFullBackup(file);
+      setBackupMessage(`${result.restored.toLocaleString("fa-IR")} بخش بازیابی و برای همگام‌سازی سرور صف‌بندی شد؛ برنامه در حال بازنشانی است...`);
+      window.setTimeout(() => window.location.reload(), 1800);
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : "بازیابی پشتیبان ناموفق بود.");
+    }
+  };
 
   // Contracts CSV state
-  const [contractsCsv, setContractsCsv] = useState<string>(RAW_CSV_DATA);
-  const [contractsFileName, setContractsFileName] = useState<string>("فایل_قراردادها_و_سرویس‌ها.csv");
-  const [contractsFileSize, setContractsFileSize] = useState<string>("~28 KB");
+  const [contractsCsv, setContractsCsv] = useState<string>("");
+  const [contractsFileName, setContractsFileName] = useState<string>("هنوز فایلی انتخاب نشده است");
+  const [contractsFileSize, setContractsFileSize] = useState<string>("0 KB");
 
   // Customers CSV state
-  const [customersCsv, setCustomersCsv] = useState<string>(RAW_CUSTOMERS_CSV_DATA);
-  const [customersFileName, setCustomersFileName] = useState<string>("فایل_لیست_مشتریان.csv");
-  const [customersFileSize, setCustomersFileSize] = useState<string>("~6 KB");
+  const [customersCsv, setCustomersCsv] = useState<string>("");
+  const [customersFileName, setCustomersFileName] = useState<string>("هنوز فایلی انتخاب نشده است");
+  const [customersFileSize, setCustomersFileSize] = useState<string>("0 KB");
+  const [buildingsCsv, setBuildingsCsv] = useState("");
+  const [buildingsFileName, setBuildingsFileName] = useState("هنوز فایلی انتخاب نشده است");
+  const parsedBuildingsRows = useMemo(() => parseBuildingsCsv(buildingsCsv), [buildingsCsv]);
 
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [confirmReset, setConfirmReset] = useState(false);
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
   const [importStatus, setImportStatus] = useState<{
     status: "idle" | "success" | "error";
@@ -102,7 +126,7 @@ export default function CsvUploadPage({
   }, [customersCsv]);
 
   // Current active rows based on dataset
-  const activeRowsCount = activeDataset === "contracts" ? parsedContractsRows.length : parsedCustomersRows.length;
+  const activeRowsCount = activeDataset === "contracts" ? parsedContractsRows.length : activeDataset === "customers" ? parsedCustomersRows.length : parsedBuildingsRows.length;
 
   // Filtered rows for preview
   const filteredContractRows = useMemo(() => {
@@ -165,10 +189,13 @@ export default function CsvUploadPage({
           setContractsCsv(text);
           setContractsFileName(file.name);
           setContractsFileSize(sizeStr);
-        } else {
+        } else if (activeDataset === "customers") {
           setCustomersCsv(text);
           setCustomersFileName(file.name);
           setCustomersFileSize(sizeStr);
+        } else {
+          setBuildingsCsv(text);
+          setBuildingsFileName(file.name);
         }
         setPage(1);
         setImportStatus({ status: "idle", message: "" });
@@ -196,6 +223,12 @@ export default function CsvUploadPage({
   };
 
   const handleImport = () => {
+    if (activeDataset === "buildings") {
+      if (!parsedBuildingsRows.length) return setImportStatus({ status: "error", message: "فایل ساختمان معتبر یا دارای ردیف نیست." });
+      const res = appStore.importBuildingsFromCsv(parsedBuildingsRows);
+      setImportStatus({ status: "success", message: `${res.updated.toLocaleString("fa-IR")} قرارداد با مبلغ دوره و برنامه خام از مهر به‌روزرسانی شد.` });
+      return;
+    }
     if (activeDataset === "contracts") {
       if (!parsedContractsRows.length) {
         setImportStatus({
@@ -280,6 +313,21 @@ export default function CsvUploadPage({
 
   return (
     <div className={`min-h-full p-4 md:p-6 pb-28 space-y-6 ${t.bg} ${t.text}`} dir="rtl">
+      <div className={`rounded-2xl border ${t.border} ${t.card} p-4 shadow-sm`}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-bold"><ShieldCheck size={18} className="text-emerald-500"/> پشتیبان کامل اطلاعات</h2>
+            <p className={`mt-1 text-xs ${t.sub}`}>قراردادها، مشتریان، قیمت‌ها، سرویس‌ها، پرداخت‌ها و تنظیمات را یکجا دانلود یا بازیابی کنید. بازیابی هم‌زمان برای سرور نیز صف‌بندی می‌شود.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={handleBackupDownload} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-500"><Download size={16}/> دانلود پشتیبان کامل</button>
+            <button type="button" onClick={() => backupInputRef.current?.click()} className="flex items-center gap-2 rounded-xl border border-sky-500/50 px-4 py-2.5 text-xs font-bold text-sky-500 hover:bg-sky-500/10"><UploadCloud size={16}/> بازیابی پشتیبان</button>
+            <input ref={backupInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { handleBackupRestore(event.target.files?.[0]); event.currentTarget.value = ""; }}/>
+          </div>
+        </div>
+        {backupMessage && <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">{backupMessage}</div>}
+      </div>
+
       {/* Dataset Selection Tabs */}
       <div className={`p-2 rounded-2xl border ${t.border} ${t.card} flex flex-wrap items-center justify-between gap-3 shadow-sm`}>
         <div className="flex items-center gap-2">
@@ -332,6 +380,9 @@ export default function CsvUploadPage({
               {parsedCustomersRows.length.toLocaleString("fa-IR")}
             </span>
           </button>
+          <button type="button" onClick={() => { setActiveDataset("buildings"); setImportStatus({ status: "idle", message: "" }); }} className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${activeDataset === "buildings" ? "bg-emerald-600 text-white" : `${t.hover} ${t.sub}`}`}>
+            <Building2 size={16}/><span>آپلود CSV ساختمان‌ها و مبلغ دوره</span><span className="rounded-full bg-white/20 px-2">{parsedBuildingsRows.length.toLocaleString("fa-IR")}</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-2 text-xs">
@@ -340,6 +391,7 @@ export default function CsvUploadPage({
           <span className="opacity-40">|</span>
           <span className={t.sub}>مشتریان جاری:</span>
           <span className="font-bold text-sky-400">{currentCustomers.length.toLocaleString("fa-IR")}</span>
+          <button type="button" onClick={() => setConfirmReset(true)} className="mr-3 flex items-center gap-1 rounded-lg border border-rose-500/40 px-3 py-1.5 font-bold text-rose-500 hover:bg-rose-500/10"><Trash2 size={13}/> پاکسازی کامل اطلاعات</button>
         </div>
       </div>
 
@@ -702,7 +754,9 @@ export default function CsvUploadPage({
       {activeView === "preview" ? (
         <div className={`rounded-xl border ${t.border} ${t.card} overflow-hidden shadow-sm`}>
           <div className="overflow-x-auto">
-            {activeDataset === "contracts" ? (
+            {activeDataset === "buildings" ? (
+              <table className="w-full text-right text-xs"><thead className={`border-b ${t.border} bg-zinc-800/50 ${t.sub}`}><tr><th className="p-3">شماره قرارداد</th><th className="p-3">مشتری</th><th className="p-3">ساختمان</th><th className="p-3">شروع</th><th className="p-3">پایان</th><th className="p-3">هزینه هر دوره</th></tr></thead><tbody>{parsedBuildingsRows.map((row,index)=><tr key={index} className={`border-b ${t.border}`}><td className="p-3">{row.contractNo}</td><td className="p-3">{row.customerName}</td><td className="p-3">{row.buildingName}</td><td className="p-3">{row.startDate}</td><td className="p-3">{row.endDate}</td><td className="p-3">{row.serviceFee.toLocaleString("fa-IR")} ریال</td></tr>)}</tbody></table>
+            ) : activeDataset === "contracts" ? (
               /* Contracts Table Preview */
               <table className="w-full text-right text-xs">
                 <thead className={`border-b ${t.border} bg-zinc-800/50 ${t.sub} uppercase font-semibold`}>
@@ -890,12 +944,14 @@ export default function CsvUploadPage({
             <span className={`text-xs ${t.sub}`}>می‌توانید کل خطوط فایل CSV را مستقیماً اینجا Paste کنید</span>
           </div>
           <textarea
-            value={activeDataset === "contracts" ? contractsCsv : customersCsv}
+            value={activeDataset === "contracts" ? contractsCsv : activeDataset === "customers" ? customersCsv : buildingsCsv}
             onChange={(e) => {
               if (activeDataset === "contracts") {
                 setContractsCsv(e.target.value);
-              } else {
+              } else if (activeDataset === "customers") {
                 setCustomersCsv(e.target.value);
+              } else {
+                setBuildingsCsv(e.target.value);
               }
               setImportStatus({ status: "idle", message: "" });
             }}
@@ -967,6 +1023,16 @@ export default function CsvUploadPage({
           </button>
         </div>
       </div>
+
+      {confirmReset && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+          <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${t.panel} ${t.border}`}>
+            <h3 className="flex items-center gap-2 font-bold text-rose-500"><AlertCircle size={20}/> پاکسازی کامل پایگاه اطلاعات</h3>
+            <p className={`mt-3 text-xs leading-6 ${t.sub}`}>تمام قراردادها، مشتریان، سوابق وابسته، زمان‌بندی‌ها و موقعیت‌های ساختمان پاک می‌شوند. این عملیات برای شروع خام و ورود CSV جدید است.</p>
+            <div className="mt-5 flex gap-2"><button onClick={() => setConfirmReset(false)} className={`flex-1 rounded-xl border py-2.5 text-xs ${t.border}`}>انصراف</button><button onClick={() => { appStore.clearAllCustomerContractData(); setConfirmReset(false); setImportStatus({ status: "success", message: "اطلاعات قراردادها و مشتریان پاک شد؛ اکنون فایل‌های CSV جدید را بارگذاری کنید." }); }} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-xs font-bold text-white">بله، همه پاک شوند</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

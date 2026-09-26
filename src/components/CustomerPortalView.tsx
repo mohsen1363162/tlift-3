@@ -27,7 +27,7 @@ import {
   BadgeCheck,
 } from "lucide-react";
 import { Contract } from "../data";
-import { MonthService, PaymentRecord, appStore } from "../store";
+import { MonthService, appStore, useContractDetails } from "../store";
 import { CustomerAuthData, cleanIranianPhone } from "../utils/customerAuth";
 import BrandLogo from "./BrandLogo";
 
@@ -79,10 +79,7 @@ export default function CustomerPortalView({ customer, onSignOut }: CustomerPort
   }, [customerContracts, selectedContractId]);
 
   // دریافت جزئیات خدمات و پرداختی‌های قرارداد
-  const contractDetails = useMemo(() => {
-    if (!activeContract) return { months: [] as MonthService[], payments: [] as PaymentRecord[] };
-    return appStore.getContractDetails(activeContract.id);
-  }, [activeContract]);
+  const contractDetails = useContractDetails(activeContract?.id || 0);
 
   // تب‌های پرتال مشتری
   const [activeTab, setActiveTab] = useState<"services" | "finance" | "contract" | "breakdown">(
@@ -103,9 +100,10 @@ export default function CustomerPortalView({ customer, onSignOut }: CustomerPort
     return sumMonths > 0 ? sumMonths : 66000000;
   }, [contractDetails.months]);
 
+  const visiblePayments = useMemo(() => contractDetails.payments.filter((payment) => !payment.approvalStatus || payment.approvalStatus === "approved"), [contractDetails.payments]);
   const totalPaid = useMemo(() => {
-    return contractDetails.payments.reduce((acc, p) => acc + (p.amount || 0), 0);
-  }, [contractDetails.payments]);
+    return visiblePayments.reduce((acc, p) => acc + (p.amount || 0), 0);
+  }, [visiblePayments]);
 
   const remainingDebt = Math.max(0, totalAmount - totalPaid);
 
@@ -113,29 +111,20 @@ export default function CustomerPortalView({ customer, onSignOut }: CustomerPort
     e.preventDefault();
     if (!breakdownText.trim()) return;
 
-    // ثبت در صف سیستم
-    const newBreakdown = {
-      id: Date.now(),
-      contractId: activeContract.id,
-      contractNo: activeContract.no,
-      buildingName: activeContract.building || activeContract.buildingName || "ساختمان کارفرما",
-      customerName: customer.name,
-      customerPhone: customer.phone,
-      problemType: breakdownType,
+    // ثبت مستقیم در پرونده قرارداد و اعلان همگام‌شونده مدیریت
+    const isTicket = breakdownType === "پیام / تیکت مدیریت";
+    appStore.addContractBreakdown(activeContract.id, {
+      status: "در انتظار تایید",
+      technicians: [],
+      declareDate: new Date().toLocaleDateString("fa-IR"),
+      declareTime: new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" }),
+      executionStatus: isTicket ? "پیام جدید مشتری" : "در انتظار ارجاع به سرویس‌کار",
+      declaredBy: customer.name,
+      contactPhone: customer.phone,
+      partsAmount: 0,
+      report: `${isTicket ? "[تیکت] " : ""}${breakdownType}: ${breakdownText.trim()}`,
       description: breakdownText.trim(),
-      regDate: new Date().toLocaleDateString("fa-IR"),
-      status: "pending",
-      priority: "urgent",
-    };
-
-    try {
-      const saved = localStorage.getItem("tlift_customer_breakdowns") || "[]";
-      const list = JSON.parse(saved);
-      list.unshift(newBreakdown);
-      localStorage.setItem("tlift_customer_breakdowns", JSON.stringify(list));
-    } catch (err) {
-      console.warn("Error saving customer breakdown", err);
-    }
+    });
 
     setBreakdownSent(true);
     setBreakdownText("");
@@ -519,7 +508,7 @@ export default function CustomerPortalView({ customer, onSignOut }: CustomerPort
                 </span>
               </div>
 
-              {contractDetails.payments.length === 0 ? (
+              {visiblePayments.length === 0 ? (
                 <div className="p-8 text-center text-xs text-slate-500">
                   هیچ سابقه پرداختی جداگانه‌ای ثبت نشده است یا پرداخت‌ها در قالب تسویه نهایی قرارداد انجام شده‌اند.
                 </div>
@@ -538,7 +527,7 @@ export default function CustomerPortalView({ customer, onSignOut }: CustomerPort
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {contractDetails.payments.map((p, idx) => (
+                      {visiblePayments.map((p, idx) => (
                         <tr key={p.id || idx} className="hover:bg-slate-50/80 transition">
                           <td className="p-3 text-slate-500 font-mono">{idx + 1}</td>
                           <td className="p-3 font-bold text-slate-800">
@@ -669,6 +658,7 @@ export default function CustomerPortalView({ customer, onSignOut }: CustomerPort
                     <option value="هم‌سطح نشدن با طبقه">هم‌سطح نشدن کابین با طبقات (عدم لول)</option>
                     <option value="خاموشی روشنایی یا کلیدها">خاموشی روشنایی کابین یا کار نکردن شستی‌ها</option>
                     <option value="سایر موارد">سایر موارد و توضیحات خاص</option>
+                    <option value="پیام / تیکت مدیریت">پیام یا تیکت برای مدیریت</option>
                   </select>
                 </div>
 

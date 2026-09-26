@@ -59,6 +59,26 @@ export async function findUserByPhone(inputPhone: string): Promise<CustomerAuthD
   const cleaned = cleanIranianPhone(inputPhone);
   if (!cleaned || cleaned.length < 10) return null;
 
+  // مالک سامانه همیشه پیش از جست‌وجوی مشتری و قرارداد به‌عنوان مدیر/تکنسین شناسایی می‌شود.
+  // ممکن است همین شماره به‌عنوان تماس یک قرارداد نیز ثبت شده باشد؛ آن رکورد نباید نقش مدیر را تغییر دهد.
+  if (cleaned === cleanIranianPhone('09192868509')) {
+    return {
+      id: 'system_admin_mohsen_emami',
+      name: 'محسن امامی برسری',
+      phone: '09192868509',
+      role: 'admin',
+      userType: 'مدیر شرکت و تکنسین سرویس',
+      activity: 'مدیریت شرکت و سرویس آسانسور',
+    };
+  }
+
+  // مدیرعامل/رئیس شرکت تعریف‌شده در تنظیمات دسترسی
+  try {
+    const access = JSON.parse(localStorage.getItem('tlift_company_access_settings_v1') || '{"leaders":[]}');
+    const leader = (access.leaders || []).find((item: { phone?: string }) => cleanIranianPhone(item.phone || '') === cleaned);
+    if (leader) return { id: leader.id, name: leader.name, phone: formatDisplayPhone(leader.phone), role: 'operator', userType: leader.title, activity: 'مدیریت شرکت' };
+  } catch { /* تنظیمات هنوز ثبت نشده است */ }
+
   // ۱. بررسی بخش پرسنل، سرویس‌کاران و مدیر (قسمت «سرویس‌کار و مسئول انجام»)
   let staffList: Staff[] = [];
   try {

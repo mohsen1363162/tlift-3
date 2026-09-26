@@ -148,11 +148,11 @@ export function parseContractsCsv(csvText: string): CsvContractRow[] {
     const coordinator = (tokens[6] || customer).replace(/^"|"$/g, "");
     const coordinatorPhone = (tokens[7] || phone).replace(/^"|"$/g, "");
     const locationStatus = tokens[8] || "";
-    const zone = tokens[9] || "عمومی";
+    const zone = tokens[9] || "";
     const address = (tokens[10] || "").replace(/^"|"$/g, "");
-    const signDate = tokens[11] || "1405/03/01";
-    const start = tokens[12] || "1405/03/02";
-    const end = tokens[13] || "1406/02/31";
+    const signDate = tokens[11] || "";
+    const start = tokens[12] || "";
+    const end = tokens[13] || "";
     const canceledStr = tokens[14] || "";
     const cancelDate = tokens[15] || "";
 
@@ -185,9 +185,9 @@ export function convertRowToContract(row: CsvContractRow, id: number): Contract 
     no: row.no || `${5100 + id}`,
     building: row.buildingName || row.customer,
     manager: row.coordinator || row.customer,
-    zone: row.zone || "نامشخص",
-    start: row.start || "1405/03/01",
-    end: row.end || "1406/02/31",
+    zone: row.zone || "",
+    start: row.start || "",
+    end: row.end || "",
     kind: "general",
     phone: row.phone,
     buildingName: row.buildingName,

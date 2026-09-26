@@ -1,6 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
-import { X, Clock, Search, Check } from "lucide-react";
-import ShamsiDatePicker from "./ShamsiDatePicker";
+import { X, Search, Check } from "lucide-react";
+import { DatePicker, TimePicker } from "../ui";
+import { makeTheme } from "../theme";
+import { getTodayJalali } from "../utils/dateConverter";
+
+const getCurrentDeclareValues = () => {
+  const { jy, jm, jd } = getTodayJalali();
+  const now = new Date();
+  return {
+    date: `${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")}`,
+    time: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+  };
+};
 
 const DEFAULT_TECHNICIANS = [
   "بهمن کشاورز",
@@ -49,20 +60,22 @@ export default function BreakdownModal({
   initialData,
   title = "ثبت خرابی جدید",
 }: BreakdownModalProps) {
-  const [declareDate, setDeclareDate] = useState("1405/06/26");
-  const [declareTime, setDeclareTime] = useState("10:30");
+  const initialNow = getCurrentDeclareValues();
+  const pickerTheme = makeTheme(true);
+  const [declareDate, setDeclareDate] = useState(initialNow.date);
+  const [declareTime, setDeclareTime] = useState(initialNow.time);
   const [isUrgent, setIsUrgent] = useState(false);
   const [reason, setReason] = useState(DEFAULT_REASONS[0]);
   const [description, setDescription] = useState("");
   const [selectedTechs, setSelectedTechs] = useState<string[]>(["محسن امامی برسری"]);
   const [searchTech, setSearchTech] = useState("");
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setDeclareDate(initialData?.declareDate || "1405/06/26");
-      setDeclareTime(initialData?.declareTime || "10:30");
+      const now = getCurrentDeclareValues();
+      setDeclareDate(initialData?.declareDate || now.date);
+      setDeclareTime(initialData?.declareTime || now.time);
       setIsUrgent(initialData?.isUrgent ?? false);
       setReason(initialData?.reason || DEFAULT_REASONS[0]);
       setDescription(initialData?.description || "");
@@ -152,33 +165,12 @@ export default function BreakdownModal({
               <label className="block text-[11.5px] font-medium text-neutral-300 mb-1.5">
                 <span className="text-red-500 ml-1">*</span>تاریخ اعلام
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={declareDate}
-                  onChange={(e) => setDeclareDate(e.target.value)}
-                  onClick={() => setShowDatePicker(true)}
-                  placeholder="انتخاب تاریخ"
-                  className="w-full rounded-lg border border-neutral-700/90 bg-[#262626] px-3 py-2 text-[12px] text-white placeholder-neutral-500 font-mono focus:border-purple-500 focus:outline-none"
-                />
-                {showDatePicker && (
-                  <div className="absolute top-full right-0 z-50 mt-1">
-                    <ShamsiDatePicker
-                      value={(() => {
-                        const [jy, jm, jd] = declareDate.split("/").map(Number);
-                        return { jy: jy || 1405, jm: jm || 1, jd: jd || 1 };
-                      })()}
-                      onChange={(d) => {
-                        setDeclareDate(
-                          `${d.jy}/${String(d.jm).padStart(2, "0")}/${String(d.jd).padStart(2, "0")}`
-                        );
-                        setShowDatePicker(false);
-                      }}
-                      onClose={() => setShowDatePicker(false)}
-                    />
-                  </div>
-                )}
-              </div>
+              <DatePicker
+                t={pickerTheme}
+                value={declareDate}
+                onChange={setDeclareDate}
+                placeholder="انتخاب تاریخ اعلام"
+              />
             </div>
 
             {/* ساعت اعلام */}
@@ -186,19 +178,12 @@ export default function BreakdownModal({
               <label className="block text-[11.5px] font-medium text-neutral-300 mb-1.5">
                 <span className="text-red-500 ml-1">*</span>ساعت اعلام
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={declareTime}
-                  onChange={(e) => setDeclareTime(e.target.value)}
-                  placeholder="انتخاب زمان"
-                  className="w-full rounded-lg border border-neutral-700/90 bg-[#262626] pl-9 pr-3 py-2 text-[12px] text-white placeholder-neutral-500 font-mono focus:border-purple-500 focus:outline-none text-left dir-ltr"
-                />
-                <Clock
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
-                />
-              </div>
+              <TimePicker
+                t={pickerTheme}
+                value={declareTime}
+                onChange={setDeclareTime}
+                placeholder="انتخاب ساعت اعلام"
+              />
             </div>
 
             {/* نیاز به رسیدگی فوری */}

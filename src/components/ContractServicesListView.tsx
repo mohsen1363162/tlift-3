@@ -31,6 +31,7 @@ import {
   useStaff,
 } from "../store";
 import BreakdownModal from "./BreakdownModal";
+import { getPreviousJalaliMonthInfo } from "../utils/workHoursTracker";
 
 interface ThemeProps {
   dark: boolean;
@@ -107,7 +108,7 @@ export default function ContractServicesListView({
   const [isMarkDoneMode, setIsMarkDoneMode] = useState(false);
 
   // Financial Stats
-  const totalMonthsAmount = months.reduce((acc, m) => acc + m.amount, 0);
+  const totalMonthsAmount = months.filter((m) => m.done).reduce((acc, m) => acc + m.amount, 0);
   const totalPaid = details.payments.reduce((acc, p) => acc + p.amount, 0);
   const debt = Math.max(0, totalMonthsAmount - totalPaid);
 
@@ -118,13 +119,19 @@ export default function ContractServicesListView({
     ["مانده بدهی قرارداد", money(debt)],
     ["مانده بدهی ساختمان", money(debt)],
     ["مانده مشتری", money(debt)],
-    ["نوع قرارداد", "سرویس نگهداری - به ازای سرویس"],
+    ["نام ساختمان", contract.building],
     ["مسئول هماهنگی/مشتری", contract.manager],
   ];
 
+  // اطلاعات ماه گذشته شمسی (مثلاً در مهرماه، ماه گذشته شهریور است)
+  const prevMonthInfo = getPreviousJalaliMonthInfo();
+  const isPastMonthPending = (m: MonthService) => {
+    return !m.done && m.m === prevMonthInfo.monthName && m.y === prevMonthInfo.year;
+  };
+
   // Counts
   const doneCount = months.filter((m) => m.done).length;
-  const notDoneCount = months.filter((m) => !m.done).length;
+  const notDoneCount = months.filter((m) => isPastMonthPending(m)).length;
   const discrepancyCount = 0;
   const pendingCount = 0;
   const totalCount = months.length;
@@ -132,7 +139,8 @@ export default function ContractServicesListView({
   // Filtered Services
   const filteredServices = months.filter((m) => {
     if (activeTab === "انجام شده" && !m.done) return false;
-    if (activeTab === "انجام نشده" && m.done) return false;
+    // کارهای ماه گذشته فقط جزو سرویس‌های انجام‌نشده قرار می‌گیرند
+    if (activeTab === "انجام نشده" && !isPastMonthPending(m)) return false;
     if (activeTab === "دارای مغایرت" || activeTab === "در انتظار تایید") return false;
 
     if (searchQuery.trim().length >= 2) {
@@ -554,7 +562,7 @@ export default function ContractServicesListView({
                 : "border-rose-900/40 bg-rose-950/20 text-rose-300 hover:bg-rose-950/35"
             }`}
           >
-            <span>انجام نشده</span>
+            <span>انجام نشده ({prevMonthInfo.monthName})</span>
             <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-900/70 px-1.5 text-[10px] font-mono text-rose-200 border border-rose-700/60">
               {fa(notDoneCount)}
             </span>

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { pushKey, registerApplier } from "./cloudSync";
 
 export type PartItem = {
   id: number;
@@ -11,6 +12,8 @@ export type PartItem = {
   desc: string;
   consumable: boolean;
   price: number;
+  stock: number;
+  minimumStock?: number;
 };
 
 const seed: [string, string, string, number][] = [
@@ -31,7 +34,7 @@ const seed: [string, string, string, number][] = [
 function loadParts(): PartItem[] {
   try {
     const raw = localStorage.getItem("tlift_parts");
-    if (raw) return JSON.parse(raw);
+    if (raw) return (JSON.parse(raw) as PartItem[]).map((item) => ({ ...item, stock: Number(item.stock || 0), minimumStock: Number(item.minimumStock || 0) }));
   } catch (e) {
     console.warn("Error reading tlift_parts", e);
   }
@@ -46,6 +49,8 @@ function loadParts(): PartItem[] {
     desc: "",
     consumable: true,
     price,
+    stock: 0,
+    minimumStock: 0,
   }));
 }
 
@@ -62,8 +67,15 @@ let parts: PartItem[] = loadParts();
 const listeners = new Set<() => void>();
 const emit = () => {
   saveParts(parts);
+  pushKey("tlift_parts", parts);
   listeners.forEach((l) => l());
 };
+registerApplier((key, data) => {
+  if (key !== "tlift_parts" || !Array.isArray(data)) return;
+  parts = (data as PartItem[]).map((item) => ({ ...item, stock: Number(item.stock || 0) }));
+  saveParts(parts);
+  listeners.forEach((listener) => listener());
+});
 
 export const partsApi = {
   all: () => parts,
@@ -78,6 +90,13 @@ export const partsApi = {
   remove: (id: number) => {
     parts = parts.filter((x) => x.id !== id);
     emit();
+  },
+  adjustStock: (id: number, delta: number) => {
+    const target = parts.find((item) => item.id === id);
+    if (!target || target.stock + delta < 0) return false;
+    parts = parts.map((item) => item.id === id ? { ...item, stock: item.stock + delta } : item);
+    emit();
+    return true;
   },
 };
 

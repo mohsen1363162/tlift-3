@@ -26,7 +26,7 @@ export type NavItem = {
 
 export const navItems: NavItem[] = [
   { id: "marketing", label: "دسترسی سریع", icon: Sparkles },
-  { id: "sales", label: "فروش", icon: TrendingUp },
+  { id: "sales", label: "سرویس‌کار", icon: TrendingUp },
   { id: "install", label: "نصب و راه اندازی", icon: Boxes },
   { id: "service", label: "سرویس و نگهداری", icon: CalendarCheck },
   { id: "servicenegar", label: "سرویس نگار", icon: PenSquare, badge: true },
@@ -44,12 +44,12 @@ export type MenuGroup = { title: string; items: string[] };
 
 export const salesMenu: MenuGroup[] = [
   {
-    title: "مشتریان و سرنخ‌ها",
-    items: ["سرنخ‌های فروش", "پیش‌فاکتورها", "فاکتورهای فروش", "پیگیری‌های تلفنی"],
+    title: "مدیریت سرویس‌کار",
+    items: ["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری"],
   },
   {
-    title: "گزارشات فروش",
-    items: ["گزارش فروش ماهانه", "تحلیل مشتریان بالقوه"],
+    title: "قطعات و تجهیزات",
+    items: ["قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"],
   },
 ];
 
@@ -69,6 +69,7 @@ export const serviceMenu: MenuGroup[] = [
       "ساختمان ها",
       "خرابی ها",
       "سرویس ها",
+      "محل کلید سه‌گوش",
       "یادآورها",
       "بیمه ها",
       "پرداختی ها",
@@ -111,6 +112,7 @@ export const settingsMenu: MenuGroup[] = [
   {
     title: "تنظیمات پایه",
     items: [
+      "مدیریت مدیران و دسترسی‌ها",
       "مدیریت هاست و خروجی cPanel",
       "داشبورد ساز",
       "شارژ پیامک",
@@ -203,31 +205,8 @@ export const initialParts: Part[] = [
   { id: 8, code: "PRT-108", name: "تراول کابل 24 رشته دت وایلر", category: "الکتریکال", unit: "متر", stock: 85, price: 950000 },
 ];
 
-export const initialCustomers: Customer[] = [
-  { id: 1, name: "* کردلو مجتمع صدرا", buildings: 1, active: true, sms: true },
-  { id: 2, name: "* صفرپور کوچه مظاهر محمدی *", buildings: 1, active: true, sms: true },
-  { id: 3, name: "* اصلانی ولیعصر ع *", buildings: 1, active: true, sms: true },
-  { id: 4, name: "* شریفی بلوک 20 *", buildings: 1, active: true, sms: true },
-  { id: 5, name: "* صالحی رسالت 11 *", buildings: 1, active: true, sms: true },
-  { id: 6, name: "* شهبازی پارس شرقی *", buildings: 1, active: true, sms: true },
-  { id: 7, name: "* گلزنی کوچه 37", buildings: 1, active: true, sms: true },
-  { id: 8, name: "* حامد عظیمی *", buildings: 1, active: true, sms: true },
-  { id: 9, name: "* حسینی فر", buildings: 1, active: true, sms: true },
-  { id: 10, name: "* حسینی بلوار معلم *", buildings: 1, active: true, sms: true },
-  { id: 11, name: "* دشتی بلوار کوچه محمد یزدی", buildings: 1, active: true, sms: true },
-  { id: 12, name: "* محمدی بلوار مالک اشتر", buildings: 1, active: true, sms: true },
-  { id: 13, name: "* پژوم فرزانگان 1", buildings: 1, active: true, sms: true },
-  { id: 14, name: "* کشانچی فارابی 14", buildings: 1, active: true, sms: true },
-  { id: 15, name: "* قدیری خیابان شهدای غواص", buildings: 0, active: true, sms: true },
-  { id: 16, name: "* چگینی حکمت 73 پلاک 19 ط 3", buildings: 1, active: true, sms: true },
-  { id: 17, name: "* مسعود حسینی فرزانگان 1", buildings: 1, active: true, sms: true },
-  { id: 18, name: "* نظری ساختمان امید", buildings: 0, active: true, sms: true },
-  { id: 19, name: "* داوود غیاثوند نرگس 24", buildings: 1, active: true, sms: true },
-  { id: 20, name: "* سرخیل توحید", buildings: 1, active: true, sms: true },
-  { id: 21, name: "* ابراهیمی فارابی 14", buildings: 1, active: true, sms: true },
-  { id: 22, name: "* گچ کوب خیابان سلیمانی پلاک 21", buildings: 1, active: true, sms: true },
-  { id: 23, name: "* غیاثوند عارف سپهر3", buildings: 1, active: true, sms: true },
-];
+// نرم‌افزار به‌صورت خام شروع می‌شود؛ اطلاعات واقعی فقط از CSV یا ثبت دستی وارد می‌شوند.
+export const initialCustomers: Customer[] = [];
 
 export const provinces = [
   "آذربایجان شرقی",
@@ -266,6 +245,28 @@ export const provinces = [
 export const usages = ["مسکونی", "تجاری", "صنعتی", "اداری", "بهداشتی درمانی", "آموزشی", "سایر"];
 export const zones = ["حکیم", "شهرک قدس", "مرکز شهر", "مینودر", "بلوار شهید بهشتی"];
 
+export type ContractDeviceInfo = {
+  name: string; address: string; nationalNo: string; certDate: string; warrantyDate: string;
+  serviceTime: string; kind: "asansor" | "pele" | "ramp"; type: string; direction: string;
+  usage: string; personCap: string; weightCap: string; stops: string; floors: string; age: string;
+  innerDoor: boolean; maker: string; serial: string;
+};
+
+export type ServiceContractDraft = {
+  customerName: string;
+  address: string;
+  representative: string;
+  startDate: string;
+  endDate: string;
+  monthlyAmountToman: string;
+  deviceCount: string;
+  stops: string;
+  doorType: string;
+  capacityPersons: string;
+  capacityKg: string;
+  savedAt?: number;
+};
+
 export type Contract = {
   id: number;
   no: string;
@@ -287,20 +288,24 @@ export type Contract = {
   isCanceled?: boolean;
   cancelDate?: string;
   customer?: string;
+  monthlyServiceFee?: number;
+  /** محل نگهداری کلید سه‌گوش نجات اضطراری؛ فقط با ورود دستی مقدار می‌گیرد. */
+  triangleKeyLocation?: string;
+  /** تاریخچه نظافت ساختمان/آسانسور به تاریخ شمسی. */
+  cleaningDates?: string[];
+  /** تاریخچه تعویض روغن موتور/گیربکس به تاریخ شمسی. */
+  motorOilChangeDates?: string[];
+  maintenanceLastEditedBy?: string;
+  maintenanceLastEditedAt?: number;
+  /** نسخه ویرایش‌شده متن/مشخصات چاپ قرارداد که برای تمدید سال بعد باقی می‌ماند. */
+  serviceContractDraft?: ServiceContractDraft;
+  additionalNotes?: string;
+  devices?: ContractDeviceInfo[];
+  photos?: string[];
+  renewalHistory?: Array<{ start: string; end: string; monthlyServiceFee: number; renewedAt: number }>;
 };
 
-export const initialContracts: Contract[] = [
-  {
-    id: 1,
-    no: "5167",
-    building: "* غیاثوند عارف سپهر3",
-    manager: "خانم لطفی عارف سپهر",
-    zone: "عارف سپهر",
-    start: "2 خرداد 1405",
-    end: "31 اردیبهشت 1406",
-    kind: "general",
-  },
-];
+export const initialContracts: Contract[] = [];
 
 export const cities: Record<string, string[]> = {
   "تهران": ["تهران", "شهریار", "ری"],
