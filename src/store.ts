@@ -4,6 +4,7 @@ import { Contract, Customer, Staff, initialContracts, initialCustomers, initialS
 import type { BuildingCsvRow } from "./utils/buildingsCsv";
 import { getContractServiceDay } from "./utils/serviceScheduleDays";
 import { getContractOfficialFee } from "./data/contractServiceFees";
+import { matchRegionServices } from "./utils/regionServiceImporter";
 import {
   RAW_CSV_DATA,
   RAW_CUSTOMERS_CSV_DATA,
@@ -1113,6 +1114,17 @@ export const appStore = {
     contracts = contracts.map((c) => (c.id === updated.id ? updated : c));
     saveStorage("tlift_contracts", contracts);
     notifyListeners();
+  },
+  importRegionServiceList: (text: string) => {
+    const result = matchRegionServices(text, contracts);
+    contracts = result.updated;
+    const importedZones: ZoneItem[] = result.regions.map((name, index) => ({ id: index + 1, name, city: name.includes("الوند") || name.includes("مسکن مهر") ? "الوند" : "قزوین", province: "قزوین" }));
+    const remainingZones = zones.filter(zone => !result.regions.includes(zone.name)).map((zone, index) => ({ ...zone, id: importedZones.length + index + 1 }));
+    zones = [...importedZones, ...remainingZones];
+    saveStorage("tlift_contracts", contracts);
+    saveStorage("tlift_zones", zones);
+    notifyListeners();
+    return { matched: result.matched, canceled: result.canceled, total: result.records.length, regions: result.regions.length, unmatched: result.unmatched.map(item => ({ region: item.region, name: item.name, phone: item.phone })) };
   },
   renewContract: (updated: Contract) => {
     const previous = contracts.find((c) => c.id === updated.id);
