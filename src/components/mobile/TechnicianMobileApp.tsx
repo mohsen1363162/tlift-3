@@ -54,6 +54,7 @@ import {
   Volume2,
   VolumeX,
   KeyRound,
+  Copy,
 } from "lucide-react";
 import type { Contract } from "../../data";
 import {
@@ -161,7 +162,7 @@ const LS = {
 const MAX_WORK_SESSION_SECONDS = 12 * 60 * 60;
 
 type Job = { contract: Contract; month: MonthService; overdue: boolean };
-type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "triangleKeys" | "technicianParts" | "dailyDispatch" | "myAssignedJobs" | "offlineService" | "offlineQueue";
+type Screen = "home" | "job" | "work" | "report" | "sign" | "map" | "calendar" | "services" | "triangleKeys" | "technicianParts" | "dailyDispatch" | "myAssignedJobs" | "dailyReports" | "offlineService" | "offlineQueue";
 
 type OfflineServiceDraft = {
   id: string;
@@ -382,6 +383,7 @@ export default function TechnicianMobileApp({
   );
   const [serviceQuery, setServiceQuery] = useState("");
   const [serviceFilter, setServiceFilter] = useState<"all" | "pending" | "done">("all");
+  const [dailyReportDate, setDailyReportDate] = useState(currentJalaliDate);
   const [dispatchQuery, setDispatchQuery] = useState("");
   const [dispatchZone, setDispatchZone] = useState("all");
   const [dispatchSelected, setDispatchSelected] = useState<string[]>([]);
@@ -392,6 +394,9 @@ export default function TechnicianMobileApp({
   const dispatchZones = useMemo(() => Array.from(new Set(contracts.map((contract) => contract.zone || "بدون منطقه"))).sort(), [contracts]);
   const visibleDispatchCandidates = dispatchCandidates.filter((job) => (dispatchZone === "all" || (job.contract.zone || "بدون منطقه") === dispatchZone) && (!dispatchQuery.trim() || `${job.contract.building} ${job.contract.manager} ${job.contract.address || ""}`.includes(dispatchQuery.trim())));
   const myDailyAssignments = scheduledServices.filter((service) => service.technician === technician.name && service.status === "pending").sort((a, b) => a.date.localeCompare(b.date));
+  const myCompletedJobs = jobs.filter(job => job.month.done && (job.month.doneBy === technician.name || job.month.techs?.includes(technician.name)));
+  const myReportDates = Array.from(new Set(myCompletedJobs.map(job => normalizeJalaliDate(job.month.date || "")).filter(Boolean))).sort((a,b)=>b.localeCompare(a));
+  const selectedDailyReportJobs = myCompletedJobs.filter(job => normalizeJalaliDate(job.month.date || "") === dailyReportDate);
 
   /* ------------------------------- map screen states ------------------------------- */
   const contractGeoLocations = useContractGeoLocations();
@@ -1108,6 +1113,7 @@ export default function TechnicianMobileApp({
           { l: "صف سرویس‌های آفلاین", i: Cloud, c: "text-emerald-600", badge: offlineDrafts.length || undefined, go: () => setScreen("offlineQueue") },
           { l: "قطعات تحویلی من", i: Package, c: "text-violet-600", badge: myPartDeliveries.length || undefined, go: () => setScreen("technicianParts") },
           { l: "کارهای واگذارشده من", i: ClipboardList, c: "text-emerald-600", badge: myDailyAssignments.length || undefined, go: () => setScreen("myAssignedJobs") },
+          { l: "گزارش روزانه من", i: FileBarChart2, c: "text-indigo-600", badge: selectedDailyReportJobs.length || undefined, go: () => { setDailyReportDate(myReportDates[0] || currentJalaliDate); setScreen("dailyReports"); } },
           ...(canDispatchServices ? [{ l: "تقسیم کار روزانه", i: Send, c: "text-blue-600", badge: undefined, go: () => setScreen("dailyDispatch" as Screen) }] : []),
         ].map((b) => (
           <button
@@ -3247,6 +3253,28 @@ export default function TechnicianMobileApp({
     <>{header("کارهای واگذارشده من", () => setScreen("home"))}<div className="p-3 pb-24"><div className="space-y-2">{myDailyAssignments.map(service=>{const contract=contracts.find(item=>item.id===service.contractId||item.contractNo===service.contractNo);const job=contract?jobs.find(item=>item.contract.id===contract.id&&(!service.monthId||item.month.id===service.monthId)):undefined;return <button key={service.id} onClick={()=>{if(job){setSelected(job);setScreen("job")}}} className="w-full rounded-2xl border bg-white p-3 text-right shadow-sm"><div className="flex items-center justify-between"><b className="text-[13px] text-gray-800">{service.buildingName}</b><span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] text-blue-700">{service.date}</span></div><div className="mt-1 text-[10px] text-gray-500">{service.zone} · {service.customerName}</div><div className="mt-2 text-[10.5px] leading-5 text-gray-600">{service.address||"آدرس ثبت نشده"}</div>{service.notes&&<div className="mt-2 rounded-lg bg-amber-50 p-2 text-[10px] text-amber-800">{service.notes}</div>}<div className="mt-2 text-[10px] font-bold text-blue-600">واگذارکننده: {service.assignedBy||"مسئول برنامه‌ریزی"}</div></button>})}{!myDailyAssignments.length&&<div className="rounded-2xl border border-dashed bg-white py-16 text-center text-xs text-gray-400">هنوز کاری به شما واگذار نشده است.</div>}</div></div></>
   );
 
+  const buildDailyReportText = () => {
+    const lines = [`گزارش کار ${technician.name}`, dailyReportDate, ""];
+    selectedDailyReportJobs.forEach((job, index) => {
+      lines.push(`${index + 1}. ${job.contract.building}`);
+      if (job.month.report) lines.push(`گزارش: ${job.month.report}`);
+      if (job.month.faultsList?.length) lines.push(`موارد: ${job.month.faultsList.join(" - ")}`);
+      if (job.month.partsList?.length) lines.push(`قطعات: ${job.month.partsList.map(part => `${part.name} (${part.qty} ${part.unit})`).join(" - ")}`);
+      if (job.month.inTime || job.month.outTime) lines.push(`ساعت: ${job.month.inTime || "؟"} الی ${job.month.outTime || "؟"}`);
+      if (job.month.reminder) lines.push(`یادآوری: ${job.month.reminder}`);
+      lines.push("");
+    });
+    return lines.join("\n").trim();
+  };
+  const copyDailyReport = async () => {
+    if (!selectedDailyReportJobs.length) return notify("برای این روز گزارشی ثبت نشده است");
+    try { await navigator.clipboard.writeText(buildDailyReportText()); notify("گزارش روزانه کپی شد؛ می‌توانید در روبیکا قرار دهید"); }
+    catch { notify("کپی خودکار ممکن نشد؛ متن را انتخاب و کپی کنید"); }
+  };
+  const renderDailyReportsView = () => (
+    <>{header("گزارش روزانه من", () => setScreen("home"))}<div className="p-3 pb-28"><div className="mb-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-3 text-[11px] leading-5 text-indigo-900">تمام سرویس‌های نهایی‌شده شما همراه گزارش کار، قطعات مصرفی و ساعت ورود و خروج اینجا نگهداری می‌شود.</div><select value={dailyReportDate} onChange={e=>setDailyReportDate(e.target.value)} className="mb-3 w-full rounded-xl border bg-white p-3 text-xs"><option value={currentJalaliDate}>امروز — {currentJalaliDate}</option>{myReportDates.filter(date=>date!==currentJalaliDate).map(date=><option key={date} value={date}>{date}</option>)}</select><div className="space-y-2">{selectedDailyReportJobs.map((job,index)=><div key={`${job.contract.id}-${job.month.id}`} className="rounded-2xl border bg-white p-3 shadow-sm"><div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">{fa(index+1)}</span><div><b className="text-[13px] text-gray-800">{job.contract.building}</b><div className="text-[10px] text-gray-500">{job.contract.zone} · {job.contract.manager}</div></div></div>{job.month.report&&<div className="mt-3 rounded-xl bg-gray-50 p-2 text-[11px] leading-5 text-gray-700"><b>گزارش کار:</b> {job.month.report}</div>}{job.month.faultsList?.length?<div className="mt-2 text-[11px] leading-5 text-rose-700"><b>موارد:</b> {job.month.faultsList.join("، ")}</div>:null}{job.month.partsList?.length?<div className="mt-2 rounded-xl bg-amber-50 p-2 text-[11px] text-amber-800"><b>قطعات مصرفی:</b> {job.month.partsList.map(part=>`${part.name} × ${part.qty}`).join("، ")}</div>:null}<div className="mt-2 text-[10px] text-gray-500">ساعت {job.month.inTime||"—"} تا {job.month.outTime||"—"}</div></div>)}{!selectedDailyReportJobs.length&&<div className="rounded-2xl border border-dashed bg-white py-14 text-center text-xs text-gray-400">برای این تاریخ سرویس نهایی‌شده‌ای ندارید.</div>}</div></div><div className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-md border-t bg-white p-3"><button onClick={copyDailyReport} disabled={!selectedDailyReportJobs.length} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white disabled:opacity-40"><Copy size={18}/> کپی گزارش برای روبیکا</button></div></>
+  );
+
   const renderTechnicianPartsView = () => (
     <>
       {header("قطعات و کالاهای تحویلی من", () => setScreen("home"))}
@@ -3588,6 +3616,7 @@ export default function TechnicianMobileApp({
         {screen === "technicianParts" && renderTechnicianPartsView()}
         {screen === "dailyDispatch" && renderDailyDispatchView()}
         {screen === "myAssignedJobs" && renderMyAssignedJobsView()}
+        {screen === "dailyReports" && renderDailyReportsView()}
         {screen === "offlineService" && renderOfflineServiceView()}
         {screen === "offlineQueue" && renderOfflineQueueView()}
 
