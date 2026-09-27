@@ -215,7 +215,9 @@ export default function TechnicianMobileApp({
   const canDispatchServices = true;
   const browserHasInternet = typeof navigator === "undefined" ? true : navigator.onLine;
   const syncServerUnavailable = browserHasInternet && !sync.isManualOffline && (sync.status === "offline" || sync.status === "error");
-  const isOffline = !browserHasInternet || sync.isManualOffline || syncServerUnavailable;
+  // خطای موقت سرور به معنی قطع اینترنت گوشی نیست؛ بنر بزرگ آفلاین فقط برای
+  // قطع واقعی اینترنت، حالت دستی یا وجود سرویس ثبت‌شده در صف نمایش داده می‌شود.
+  const isOffline = !browserHasInternet || sync.isManualOffline || sync.offlineServicesCount > 0;
   const isSyncing = sync.status === "syncing" || syncBusy;
 
   const handleManualSync = async () => {

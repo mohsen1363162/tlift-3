@@ -557,18 +557,22 @@ export async function syncNow(): Promise<{ success: boolean; message: string }> 
         message: "همگام‌سازی کامل با سرور انجام شد و همه اطلاعات به‌روزرسانی شدند.",
       };
     } else {
-      setState({ status: "offline" });
+      setState({ status: navigator.onLine ? "error" : "offline" });
       return {
         success: false,
-        message: "برخی داده‌ها در صف باقی ماندند. به محض اتصال مجدد ارسال خواهند شد.",
+        message: navigator.onLine
+          ? "سرور همگام‌سازی موقتاً در دسترس نیست؛ اطلاعات محفوظ است و خودکار دوباره ارسال می‌شود."
+          : "برخی داده‌ها در صف باقی ماندند. به محض اتصال مجدد ارسال خواهند شد.",
       };
     }
   } catch (err: unknown) {
     console.warn("[cloudSync] syncNow:", err);
-    setState({ status: "offline", error: describeSyncError(err) });
+    setState({ status: navigator.onLine ? "error" : "offline", error: describeSyncError(err) });
     return {
       success: false,
-      message: "خطا در برقراری ارتباط با سرور. اطلاعات در حافظه محلی محفوظ است.",
+      message: navigator.onLine
+        ? "اینترنت برقرار است؛ سرور همگام‌سازی موقتاً پاسخ نداد. اطلاعات محفوظ است و دوباره تلاش می‌شود."
+        : "اتصال اینترنت قطع است. اطلاعات در حافظه محلی محفوظ است.",
     };
   }
 }
