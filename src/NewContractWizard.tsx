@@ -22,6 +22,7 @@ import { Field, inputCls, SearchSelect, DatePicker } from "./ui";
 import DeviceModal, { Device } from "./DeviceModal";
 import ServicesCalendar from "./ServicesCalendar";
 import { useCustomers } from "./store";
+import { parseMoneyInput,rialToTomanWords } from "./utils/moneyFormat";
 
 const STEPS = [
   { key: 0, label: "اطلاعات مشتری", icon: UserRound },
@@ -536,6 +537,7 @@ export default function NewContractWizard({
                     }
                     className={inputCls(t)}
                   />
+                  {fin.amount&&<div className={`mt-1 text-[10px] ${t.sub}`}>{rialToTomanWords(parseMoneyInput(fin.amount))}</div>}
                 </Field>
                 <Field label="تعداد اقساط">
                   <SearchSelect

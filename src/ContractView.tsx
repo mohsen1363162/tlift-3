@@ -55,6 +55,7 @@ import ServiceContractPreviewModal from "./components/ServiceContractPreviewModa
 import BreakdownModal from "./components/BreakdownModal";
 import { Field, inputCls, SearchSelect, DatePicker } from "./ui";
 import { appStore, useContractDetails, MonthService, PaymentRecord, Invoice } from "./store";
+import { formatMoneyInput,parseMoneyInput,rialToTomanWords } from "./utils/moneyFormat";
 
 const fa = (n: string | number) => String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]);
 const MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
@@ -1660,7 +1661,7 @@ export default function ContractView({
                 <Field label="منطقه"><input value={contractDraft.zone || ""} onChange={(e) => setContractField("zone", e.target.value)} className={inputCls(t)}/></Field>
                 <Field label="تاریخ شروع"><input value={contractDraft.start || ""} onChange={(e) => setContractField("start", e.target.value)} className={inputCls(t)}/></Field>
                 <Field label="تاریخ پایان"><input value={contractDraft.end || ""} onChange={(e) => setContractField("end", e.target.value)} className={inputCls(t)}/></Field>
-                <Field label="مبلغ ماهیانه (ریال)"><input inputMode="numeric" value={contractDraft.monthlyServiceFee || ""} onChange={(e) => setContractField("monthlyServiceFee", Number(e.target.value.replace(/\D/g, "")))} className={inputCls(t)}/></Field>
+                <Field label="مبلغ ماهیانه (ریال)"><input inputMode="numeric" value={contractDraft.monthlyServiceFee ? formatMoneyInput(contractDraft.monthlyServiceFee) : ""} onChange={(e) => setContractField("monthlyServiceFee", parseMoneyInput(e.target.value))} className={inputCls(t)}/>{!!contractDraft.monthlyServiceFee&&<div className={`mt-1 text-[10px] ${t.sub}`}>{rialToTomanWords(contractDraft.monthlyServiceFee)}</div>}</Field>
                 <Field label="محل کلید سه‌گوش"><input value={contractDraft.triangleKeyLocation || ""} onChange={(e) => setContractField("triangleKeyLocation", e.target.value)} className={inputCls(t)}/></Field>
                 <Field label="آدرس ساختمان" className="sm:col-span-2"><textarea value={contractDraft.address || ""} onChange={(e) => setContractField("address", e.target.value)} className={`min-h-20 w-full rounded border p-2 text-sm ${t.input}`}/></Field>
                 <Field label="توضیحات اضافی" className="sm:col-span-2"><textarea value={contractDraft.additionalNotes || ""} onChange={(e) => setContractField("additionalNotes", e.target.value)} className={`min-h-20 w-full rounded border p-2 text-sm ${t.input}`}/></Field>
@@ -1668,7 +1669,7 @@ export default function ContractView({
               {contractEditorMode === "renew" && <>
                 <Field label="تاریخ شروع دوره جدید"><input value={contractDraft.start || ""} onChange={(e) => setContractField("start", e.target.value)} placeholder="۱۴۰۶/۰۱/۰۱" className={inputCls(t)}/></Field>
                 <Field label="تاریخ پایان دوره جدید"><input value={contractDraft.end || ""} onChange={(e) => setContractField("end", e.target.value)} placeholder="۱۴۰۶/۱۲/۲۹" className={inputCls(t)}/></Field>
-                <Field label="مبلغ ماهیانه جدید (ریال)" className="sm:col-span-2"><input inputMode="numeric" value={contractDraft.monthlyServiceFee || ""} onChange={(e) => setContractField("monthlyServiceFee", Number(e.target.value.replace(/\D/g, "")))} className={inputCls(t)}/></Field>
+                <Field label="مبلغ ماهیانه جدید (ریال)" className="sm:col-span-2"><input inputMode="numeric" value={contractDraft.monthlyServiceFee ? formatMoneyInput(contractDraft.monthlyServiceFee) : ""} onChange={(e) => setContractField("monthlyServiceFee", parseMoneyInput(e.target.value))} className={inputCls(t)}/>{!!contractDraft.monthlyServiceFee&&<div className={`mt-1 text-[10px] ${t.sub}`}>{rialToTomanWords(contractDraft.monthlyServiceFee)}</div>}</Field>
               </>}
               {contractEditorMode === "representatives" && <>
                 <Field label="مدیر ساختمان / کارفرما"><input value={contractDraft.manager || ""} onChange={(e) => setContractField("manager", e.target.value)} className={inputCls(t)}/></Field>
