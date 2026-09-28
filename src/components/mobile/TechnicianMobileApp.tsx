@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import type { Contract } from "../../data";
 import { formatMoneyInput, parseMoneyInput, rialToTomanWords } from "../../utils/moneyFormat";
+import { detectPriceAnomaly, findPriceAnomalies } from "../../utils/priceAnomaly";
 import { storePhoto } from "../../utils/photoStorage";
 import {
   appStore,
@@ -775,6 +776,11 @@ export default function TechnicianMobileApp({
       setDurationReason("");
       setDurationReviewOpen(true);
       return;
+    }
+    const unusualPrices = findPriceAnomalies(usedParts, parts);
+    if (unusualPrices.length) {
+      const details = unusualPrices.map(item => `• ${item.message}`).join("\n");
+      if (!window.confirm(`هشدار قیمت غیرعادی\n\n${details}\n\nجمع قطعات: ${partsTotal.toLocaleString("fa-IR")} ریال\n\nبا وجود این اختلاف قیمت، گزارش نهایی ثبت شود؟`)) return;
     }
     const finalOutTime = correctedOutTime || nowTime();
     const faultsList = faults.map((f) => `${f.text}${f.fixed ? " (رفع شد)" : ""}`);
@@ -1772,7 +1778,7 @@ export default function TechnicianMobileApp({
                   <div key={i} className="flex items-center gap-2 border-b px-3 py-2 text-[12.5px]">
                     <div className="flex-1">
                       <div className="font-medium text-gray-800">{p.name}</div>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500"><span>{fa(p.price.toLocaleString("en-US"))} ریال / {p.unit}</span><button type="button" onClick={() => { const entered = window.prompt(`قیمت جدید «${p.name}» به ریال`, formatMoneyInput(p.price)); if (entered === null) return; const next = parseMoneyInput(entered); if (!next || next === p.price) return; if (!window.confirm(`قیمت ${p.name} از ${p.price.toLocaleString("fa-IR")} به ${next.toLocaleString("fa-IR")} ریال تغییر کند؟\n\n${rialToTomanWords(next)}\n\nاز درست بودن مبلغ مطمئن هستید؟`)) return; setUsedParts(list => list.map((item,index) => index === i ? {...item,price:next} : item)); const catalogPart = parts.find(item => item.code === p.code || item.name === p.name); if (catalogPart) partsApi.update({...catalogPart,price:next}); notify("قیمت قطعه با تأیید شما به‌روزرسانی شد"); }} className="rounded bg-blue-50 px-2 py-0.5 font-bold text-blue-600">ویرایش قیمت</button></div>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500"><span>{fa(p.price.toLocaleString("en-US"))} ریال / {p.unit}</span><button type="button" onClick={() => { const entered = window.prompt(`قیمت جدید «${p.name}» به ریال`, formatMoneyInput(p.price)); if (entered === null) return; const next = parseMoneyInput(entered); if (!next || next === p.price) return; const anomaly = detectPriceAnomaly(p.name, next, p.code, p.price); const warning = anomaly ? `\n\n⚠️ ${anomaly.message}\nاین تغییر نیازمند تأیید ویژه است.` : ""; if (!window.confirm(`قیمت ${p.name} از ${p.price.toLocaleString("fa-IR")} به ${next.toLocaleString("fa-IR")} ریال تغییر کند؟\n\n${rialToTomanWords(next)}${warning}\n\nاز درست بودن مبلغ مطمئن هستید؟`)) return; if (anomaly?.level === "critical" && !window.confirm(`اختلاف قیمت بیش از ۱۰۰٪ است.\n\nقیمت جدید: ${next.toLocaleString("fa-IR")} ریال\nقیمت مرجع: ${anomaly.baseline.toLocaleString("fa-IR")} ریال\n\nبرای بار دوم تأیید می‌کنید؟`)) return; setUsedParts(list => list.map((item,index) => index === i ? {...item,price:next} : item)); const catalogPart = parts.find(item => item.code === p.code || item.name === p.name); if (catalogPart) partsApi.update({...catalogPart,price:next}); notify("قیمت قطعه با تأیید شما به‌روزرسانی شد"); }} className="rounded bg-blue-50 px-2 py-0.5 font-bold text-blue-600">ویرایش قیمت</button></div>
                     </div>
                     <NumberStepper
                       value={p.qty}

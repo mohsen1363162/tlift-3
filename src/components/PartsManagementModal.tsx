@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { X, Search, Wrench, Plus, Trash2, Check, ShoppingBag, Hash, Tag, Layers } from "lucide-react";
 import { partsApi, PartItem } from "../partsStore";
+import { detectPriceAnomaly } from "../utils/priceAnomaly";
 
 const fa = (n: string | number) => String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]);
 const money = (n: number) => fa(n.toLocaleString("en-US")) + " ریال";
@@ -90,6 +91,10 @@ export default function PartsManagementModal({
       return;
     }
 
+    const catalogPrice = catalog.find(item => item.id === selectedCatalogId || item.code === code)?.price;
+    const anomaly = detectPriceAnomaly(name.trim(), Number(price), code.trim(), catalogPrice);
+    if (anomaly && !window.confirm(`هشدار قیمت غیرعادی\n\n${anomaly.message}\nقیمت واردشده: ${Number(price).toLocaleString("fa-IR")} ریال\n\nاین قطعه با همین مبلغ ثبت شود؟`)) return;
+    if (anomaly?.level === "critical" && !window.confirm("اختلاف قیمت بیش از ۱۰۰٪ است. برای ثبت، دوباره تأیید کنید.")) return;
     onSave({
       code: code.trim() || String(Math.floor(1000 + Math.random() * 9000)),
       name: name.trim(),
@@ -105,6 +110,7 @@ export default function PartsManagementModal({
   if (!isOpen) return null;
 
   const totalAmount = (Number(qty) || 0) * (Number(price) || 0);
+  const currentAnomaly = detectPriceAnomaly(name, Number(price), code, catalog.find(item => item.id === selectedCatalogId || item.code === code)?.price);
 
   return (
     <div
