@@ -97,6 +97,8 @@ export type AppNotification = {
   paymentId?: number;
   breakdownId?: string;
   senderName?: string;
+  priority?: "critical" | "high" | "normal";
+  snoozedUntil?: number;
 };
 
 export type Invoice = {
@@ -986,7 +988,7 @@ export const appStore = {
   // اعلان‌های مدیریتی همگام‌شونده بین دستگاه‌ها
   getNotifications: () => notifications,
   addNotification: (item: Omit<AppNotification, "id" | "createdAt" | "read">) => {
-    const created: AppNotification = { ...item, id: `ntf-${Date.now()}-${Math.floor(Math.random() * 1000)}`, createdAt: Date.now(), read: false };
+    const created: AppNotification = { priority: item.type === "breakdown" ? "critical" : item.type === "payment" ? "high" : "normal", ...item, id: `ntf-${Date.now()}-${Math.floor(Math.random() * 1000)}`, createdAt: Date.now(), read: false };
     notifications = [created, ...notifications].slice(0, 500);
     saveStorage("tlift_notifications_v1", notifications);
     notifyListeners();
@@ -996,6 +998,14 @@ export const appStore = {
     notifications = notifications.map((item) => item.id === id ? { ...item, read: true } : item);
     saveStorage("tlift_notifications_v1", notifications);
     notifyListeners();
+  },
+  markAllNotificationsRead: () => {
+    notifications = notifications.map(item => ({ ...item, read: true }));
+    saveStorage("tlift_notifications_v1", notifications); notifyListeners();
+  },
+  snoozeNotification: (id: string, hours = 24) => {
+    notifications = notifications.map(item => item.id === id ? { ...item, snoozedUntil: Date.now() + hours * 3600000, read: true } : item);
+    saveStorage("tlift_notifications_v1", notifications); notifyListeners();
   },
   resolveNotification: (id: string, approved: boolean) => {
     const item = notifications.find((notification) => notification.id === id);
