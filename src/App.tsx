@@ -63,6 +63,7 @@ const SystemHealthPage = lazy(() => import("./components/SystemHealthPage"));
 const IncompleteDataCenter = lazy(() => import("./components/IncompleteDataCenter"));
 const DataIntegrityPage = lazy(() => import("./components/DataIntegrityPage"));
 const OperationalReadinessPage = lazy(() => import("./components/OperationalReadinessPage"));
+const AdminQuickServiceCompletionPage = lazy(() => import("./components/AdminQuickServiceCompletionPage"));
 const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
 const TriangleKeyLocationsPage = lazy(() => import("./components/TriangleKeyLocationsPage"));
@@ -109,6 +110,7 @@ type Tab = {
     | "incompleteData"
     | "dataIntegrity"
     | "operationalReadiness"
+    | "adminQuickServiceCompletion"
     | "accessManagement"
     | "triangleKeyLocations"
     | "serviceReport";
@@ -267,6 +269,7 @@ export default function App() {
     else if (label === "چاپ گزارش مشتریان بدهکار") addTab("چاپ گزارش مشتریان بدهکار", "debtorReport");
     else if (label === "چاپ گزارش مشتریان") addTab("چاپ گزارش مشتریان", "customerReport");
     else if (label === "قرارداد ها" || label === "قراردادها") addTab("قرارداد ها", "contracts");
+    else if (label === "ثبت سریع سرویس‌های انجام‌شده") addTab("ثبت سریع سرویس", "adminQuickServiceCompletion");
     else if (
       label === "مدیریت زمانبندی سرویس ها و خرابی ها" ||
       label.includes("مدیریت زمانبندی") ||
@@ -734,6 +737,8 @@ export default function App() {
               <DataIntegrityPage t={t} />
             ) : current?.kind === "operationalReadiness" ? (
               <OperationalReadinessPage t={t} />
+            ) : current?.kind === "adminQuickServiceCompletion" ? (
+              <AdminQuickServiceCompletionPage t={t} />
             ) : current?.kind === "accessManagement" ? (
               <AccessManagementPage t={t} />
             ) : current?.kind === "triangleKeyLocations" ? (

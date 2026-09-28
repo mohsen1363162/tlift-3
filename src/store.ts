@@ -1307,6 +1307,7 @@ export const appStore = {
     serviceData: {
       techs: string[];
       doneBy?: string;
+      recordedBy?: string;
       doneDate: string;
       inTime?: string;
       outTime?: string;
@@ -1365,7 +1366,7 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
-    recordAudit({ action: "ثبت نهایی سرویس", entityType: "service", entityId: `${contractId}-${monthId}`, title: contracts.find(c=>c.id===contractId)?.building || `قرارداد ${contractId}`, actor: serviceData.doneBy || serviceData.techs[0], before: targetMonth, after: updatedMonths.find(m=>m.id===monthId) });
+    recordAudit({ action: serviceData.recordedBy ? "ثبت گذشته‌نگر سرویس توسط مدیر" : "ثبت نهایی سرویس", entityType: "service", entityId: `${contractId}-${monthId}`, title: contracts.find(c=>c.id===contractId)?.building || `قرارداد ${contractId}`, actor: serviceData.recordedBy || serviceData.doneBy || serviceData.techs[0], before: targetMonth, after: updatedMonths.find(m=>m.id===monthId) });
     scheduledServices = scheduledServices.map((service) => service.contractId === contractId && service.monthId === monthId ? { ...service, status: "done", actualDate: serviceData.doneDate, lastUpdated: Date.now() } : service);
     saveStorage("tlift_scheduled_services", scheduledServices);
     if (serviceData.partsList?.length) {
