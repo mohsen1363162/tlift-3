@@ -283,6 +283,45 @@ const syncApiCandidates = (): string[] => {
   ];
 };
 
+function mergeById(serverItems: any[] = [], localItems: any[] = []) {
+  const map = new Map<string, any>();
+  serverItems.forEach((item, index) => map.set(String(item?.id ?? `server-${index}`), item));
+  localItems.forEach((item, index) => map.set(String(item?.id ?? `local-${index}`), { ...map.get(String(item?.id ?? `local-${index}`)), ...item }));
+  return Array.from(map.values());
+}
+
+// گزارش‌های قرارداد ماه‌به‌ماه ادغام می‌شوند تا ثبت هم‌زمان دو سرویس‌کار
+// روی ساختمان‌های متفاوت، کل نقشه جزئیات را بازنویسی نکند.
+function mergeContractDetails(serverData: any, localData: any) {
+  const server = serverData && typeof serverData === "object" ? serverData : {};
+  const local = localData && typeof localData === "object" ? localData : {};
+  const merged: Record<string, any> = { ...server };
+  for (const contractId of new Set([...Object.keys(server), ...Object.keys(local)])) {
+    const s = server[contractId] || {}, l = local[contractId] || {};
+    const monthMap = new Map<string, any>();
+    (s.months || []).forEach((month: any) => monthMap.set(String(month.id), month));
+    (l.months || []).forEach((month: any) => {
+      const previous = monthMap.get(String(month.id));
+      const localEdited = Number(month.postCompletionEditedAt || 0);
+      if (!previous || (month.done && !previous.done) || (localEdited > 0 && localEdited >= Number(previous.postCompletionEditedAt || 0))) monthMap.set(String(month.id), { ...previous, ...month });
+    });
+    merged[contractId] = {
+      ...s, ...l,
+      months: Array.from(monthMap.values()),
+      payments: mergeById(s.payments, l.payments),
+      breakdowns: mergeById(s.breakdowns, l.breakdowns),
+      invoices: mergeById(s.invoices, l.invoices),
+    };
+  }
+  return merged;
+}
+
+function autoMergeConflict(key: string, serverData: unknown, localData: unknown) {
+  if (key === "tlift_contract_details") return mergeContractDetails(serverData, localData);
+  if (["tlift_scheduled_services", "tlift_notifications_v1", "tlift_technician_part_deliveries_v1", "tlift_audit_log_v1"].includes(key) && Array.isArray(serverData) && Array.isArray(localData)) return mergeById(serverData, localData);
+  return undefined;
+}
+
 async function apiUpsert(key: string, data: unknown, updated_at: string) {
   let lastError: unknown;
   for (const endpoint of syncApiCandidates()) {
@@ -294,6 +333,21 @@ async function apiUpsert(key: string, data: unknown, updated_at: string) {
       }));
       if (res.status === 409) {
         const conflict = await res.json().catch(() => ({}));
+        const merged = autoMergeConflict(key, conflict.server?.data, data);
+        if (merged !== undefined && conflict.server?.updated_at) {
+          const retry = await withTimeout(fetch(`${endpoint}?token=${encodeURIComponent(authToken)}`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, data: merged, updated_at, base_updated_at: conflict.server.updated_at }),
+          }));
+          if (retry.ok) {
+            queue[key] = merged;
+            forceApplyMerged(key, merged);
+            const conflicts = loadConflicts(); delete conflicts[key];
+            localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts));
+            setState({ conflicts: Object.keys(conflicts).length });
+            return;
+          }
+        }
         const conflicts = loadConflicts();
         conflicts[key] = { local: data, server: conflict.server, detectedAt: Date.now() };
         localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts));
@@ -440,6 +494,30 @@ export async function resolveSyncConflict(key: string, choice: "local" | "server
   return true;
 }
 
+function forceApplyMerged(key: string, data: unknown) {
+  applyingRemote = true;
+  try { appliers.forEach(applier => applier(key, data)); }
+  finally { applyingRemote = false; }
+}
+
+function prepareStoredConflictMerges() {
+  const conflicts = getSyncConflicts();
+  let changed = false;
+  Object.entries(conflicts).forEach(([key, conflict]) => {
+    const merged = autoMergeConflict(key, conflict.server?.data, conflict.local);
+    if (merged === undefined || !conflict.server?.updated_at) return;
+    queue[key] = merged;
+    const meta = loadMeta(); meta[key] = conflict.server.updated_at; saveMeta(meta);
+    forceApplyMerged(key, merged);
+    delete conflicts[key]; changed = true;
+  });
+  if (changed) {
+    saveQueue(queue);
+    localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts));
+    setState({ conflicts: Object.keys(conflicts).length, pending: Object.keys(queue).length });
+  }
+}
+
 function applyRemote(key: string, data: unknown, updated_at: string) {
   // اگر برای این کلید تغییرات محلی ارسال‌نشده داریم، داده سرور آن را رونویسی نکند
   if (queue[key] !== undefined) return;
@@ -513,6 +591,9 @@ let started = false;
 export async function startCloudSync() {
   if (started) return;
   started = true;
+
+  // تداخل‌های نسخه‌های قبلی برای داده‌های قابل‌ادغام، بدون حذف گزارش هیچ سرویس‌کار آماده ارسال می‌شوند.
+  prepareStoredConflictMerges();
 
   // مقداردهی اولیه تعداد صف و وضعیت
   setState({
