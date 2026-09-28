@@ -109,19 +109,20 @@ export default defineConfig({
       name: "configure-zip-headers",
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          if (
-            req.url &&
-            (req.url.startsWith("/public_html.zip") ||
-              req.url.startsWith("/cpanel_public_html.zip"))
-          ) {
-            res.setHeader("Content-Type", "application/zip");
-            const filename = req.url.includes("cpanel")
-              ? "cpanel_public_html.zip"
-              : "public_html.zip";
-            res.setHeader(
-              "Content-Disposition",
-              `attachment; filename="${filename}"`
-            );
+          const rawUrl = req.url?.split("?")[0] || "";
+          if (rawUrl.endsWith(".zip")) {
+            const fileName = path.basename(rawUrl);
+            const filePath = path.resolve(__dirname, "public", fileName);
+            if (fs.existsSync(filePath)) {
+              res.setHeader("Content-Type", "application/zip");
+              res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${fileName}"`
+              );
+              const stream = fs.createReadStream(filePath);
+              stream.pipe(res);
+              return;
+            }
           }
           next();
         });
