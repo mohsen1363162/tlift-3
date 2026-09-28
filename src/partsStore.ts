@@ -86,7 +86,7 @@ export const partsApi = {
   },
   update: (p: PartItem) => {
     const previous = parts.find((x) => x.id === p.id);
-    if (previous) recordAudit({ action: previous.price !== p.price ? "تغییر قیمت قطعه" : "ویرایش قطعه", entityType: "part", entityId: String(p.id), title: p.name, before: previous, after: p });
+    if (previous) recordAudit({ action: previous.price !== p.price ? "تغییر قیمت قطعه" : previous.stock !== p.stock ? "انبارگردانی موجودی اصلی" : "ویرایش قطعه", entityType: "part", entityId: String(p.id), title: p.name, before: previous, after: p });
     parts = parts.map((x) => (x.id === p.id ? p : x));
     emit();
   },

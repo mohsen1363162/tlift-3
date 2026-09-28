@@ -365,6 +365,8 @@ export type TechnicianPartDelivery = {
   remainingQuantity: number;
   deliveredAt: string;
   note?: string;
+  returnedQuantity?: number;
+  lastInventoryAt?: string;
   status: "active" | "consumed" | "returned";
 };
 
@@ -1712,7 +1714,34 @@ export const appStore = {
     saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
     notifyListeners();
   },
+  returnTechnicianParts: (id: string, quantity: number, note?: string) => {
+    const previous = technicianPartDeliveries.find(item => item.id === id);
+    if (!previous || quantity <= 0 || quantity > previous.remainingQuantity) return false;
+    const remainingQuantity = previous.remainingQuantity - quantity;
+    const updated: TechnicianPartDelivery = { ...previous, remainingQuantity, returnedQuantity: (previous.returnedQuantity || 0) + quantity, status: remainingQuantity <= 0 ? "returned" : "active", note: [previous.note, note].filter(Boolean).join(" | ") };
+    technicianPartDeliveries = technicianPartDeliveries.map(item => item.id === id ? updated : item);
+    recordAudit({ action: "برگشت قطعه به انبار", entityType: "inventory", entityId: id, title: `${quantity} ${previous.unit || "عدد"} ${previous.partName} از ${previous.technicianName}`, before: previous, after: updated });
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries); notifyListeners(); return true;
+  },
+  transferTechnicianParts: (id: string, quantity: number, target: { name: string; phone?: string }, note?: string) => {
+    const previous = technicianPartDeliveries.find(item => item.id === id);
+    if (!previous || quantity <= 0 || quantity > previous.remainingQuantity || target.name === previous.technicianName) return false;
+    const source = { ...previous, remainingQuantity: previous.remainingQuantity - quantity, status: previous.remainingQuantity - quantity <= 0 ? "returned" as const : "active" as const };
+    const destination: TechnicianPartDelivery = { ...previous, id: `transfer-${Date.now()}`, technicianName: target.name, technicianPhone: target.phone, quantity, usedQuantity: 0, remainingQuantity: quantity, returnedQuantity: 0, deliveredAt: new Date().toLocaleDateString("fa-IR"), status: "active", note: `انتقال از ${previous.technicianName}${note ? ` | ${note}` : ""}` };
+    technicianPartDeliveries = [destination, ...technicianPartDeliveries.map(item => item.id === id ? source : item)];
+    recordAudit({ action: "انتقال قطعه بین همکاران", entityType: "inventory", entityId: destination.id, title: `${quantity} ${previous.partName}: ${previous.technicianName} ← ${target.name}`, before: previous, after: destination });
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries); notifyListeners(); return true;
+  },
+  reconcileTechnicianParts: (id: string, counted: number, note: string) => {
+    const previous = technicianPartDeliveries.find(item => item.id === id);
+    if (!previous || counted < 0) return false;
+    const updated: TechnicianPartDelivery = { ...previous, remainingQuantity: counted, quantity: previous.usedQuantity + (previous.returnedQuantity || 0) + counted, status: counted > 0 ? "active" : previous.usedQuantity > 0 ? "consumed" : "returned", lastInventoryAt: new Date().toISOString(), note: [previous.note, `انبارگردانی: ${note}`].filter(Boolean).join(" | ") };
+    technicianPartDeliveries = technicianPartDeliveries.map(item => item.id === id ? updated : item);
+    recordAudit({ action: "انبارگردانی موجودی همکار", entityType: "inventory", entityId: id, title: `${previous.partName} نزد ${previous.technicianName}: ${previous.remainingQuantity} ← ${counted}`, before: previous, after: updated });
+    saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries); notifyListeners(); return true;
+  },
   consumeTechnicianParts: (technicianName: string, usedParts: ServicePartItem[]) => {
+    const beforeConsumption = technicianPartDeliveries;
     usedParts.forEach((used) => {
       let needed = Number(used.qty || 0);
       technicianPartDeliveries = technicianPartDeliveries.map((delivery) => {
@@ -1723,6 +1752,7 @@ export const appStore = {
         return { ...delivery, usedQuantity: delivery.usedQuantity + take, remainingQuantity, status: remainingQuantity <= 0 ? "consumed" : "active" };
       });
     });
+    beforeConsumption.forEach(previous => { const updated=technicianPartDeliveries.find(item=>item.id===previous.id); if(updated && updated.usedQuantity!==previous.usedQuantity) recordAudit({ action:"مصرف قطعه در سرویس", entityType:"inventory", entityId:previous.id, title:`${updated.usedQuantity-previous.usedQuantity} ${previous.partName} توسط ${technicianName}`, before:previous, after:updated }); });
     saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
     notifyListeners();
   },
