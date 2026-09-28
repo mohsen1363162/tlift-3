@@ -62,6 +62,7 @@ const AuditHistoryPage = lazy(() => import("./components/AuditHistoryPage"));
 const SystemHealthPage = lazy(() => import("./components/SystemHealthPage"));
 const IncompleteDataCenter = lazy(() => import("./components/IncompleteDataCenter"));
 const DataIntegrityPage = lazy(() => import("./components/DataIntegrityPage"));
+const OperationalReadinessPage = lazy(() => import("./components/OperationalReadinessPage"));
 const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
 const TriangleKeyLocationsPage = lazy(() => import("./components/TriangleKeyLocationsPage"));
@@ -107,6 +108,7 @@ type Tab = {
     | "systemHealth"
     | "incompleteData"
     | "dataIntegrity"
+    | "operationalReadiness"
     | "accessManagement"
     | "triangleKeyLocations"
     | "serviceReport";
@@ -257,6 +259,7 @@ export default function App() {
     else if (label === "سلامت سرور و همگام‌سازی") addTab("سلامت سیستم", "systemHealth");
     else if (label === "مرکز اطلاعات ناقص") addTab("اطلاعات ناقص", "incompleteData");
     else if (label === "بررسی یکپارچگی اطلاعات") addTab("یکپارچگی اطلاعات", "dataIntegrity");
+    else if (label === "آزمون آمادگی دستگاه") addTab("آمادگی دستگاه", "operationalReadiness");
     else if (label === "مدیریت مدیران و دسترسی‌ها") addTab("مدیریت دسترسی‌ها", "accessManagement");
     else if (["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری", "قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"].includes(label))
       addTab("داشبورد سرویس‌کاران", "technicianDashboard");
@@ -729,6 +732,8 @@ export default function App() {
               <IncompleteDataCenter t={t} />
             ) : current?.kind === "dataIntegrity" ? (
               <DataIntegrityPage t={t} />
+            ) : current?.kind === "operationalReadiness" ? (
+              <OperationalReadinessPage t={t} />
             ) : current?.kind === "accessManagement" ? (
               <AccessManagementPage t={t} />
             ) : current?.kind === "triangleKeyLocations" ? (
