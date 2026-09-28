@@ -60,6 +60,9 @@ export type MonthService = {
   attachments?: string[];
   delayOrAdvance?: string;
   serviceDurationReason?: string;
+  postCompletionEditedAt?: number;
+  postCompletionEditedBy?: string;
+  postCompletionEditNote?: string;
 };
 
 export type PaymentRecord = {
@@ -1396,6 +1399,20 @@ export const appStore = {
     setTimeout(() => {
       syncNow().catch(() => {});
     }, 150);
+  },
+
+  amendCompletedService: (contractId: number, monthId: number, editor: string, report: string, addedParts: ServicePartItem[]) => {
+    const details = appStore.getContractDetails(contractId);
+    const previous = details.months.find(month => month.id === monthId);
+    if (!previous?.done || (previous.doneBy !== editor && !previous.techs?.includes(editor))) return false;
+    const partsList = [...(previous.partsList || []), ...addedParts];
+    const addedAmount = addedParts.reduce((sum, part) => sum + part.qty * part.price, 0);
+    const updated = { ...previous, report: report.trim(), partsList, partsAmount: Number(previous.partsAmount || 0) + addedAmount, amount: Number(previous.amount || 0) + addedAmount, postCompletionEditedAt: Date.now(), postCompletionEditedBy: editor, postCompletionEditNote: "گزارش یا قطعه پس از تکمیل سرویس ویرایش شد" };
+    contractDetailsMap[contractId] = { ...details, months: details.months.map(month => month.id === monthId ? updated : month), invoices: addedAmount > 0 ? [...details.invoices, { id: Date.now(), title: `قطعات تکمیلی سرویس ${previous.m} ${previous.y}`, date: previous.date || new Date().toLocaleDateString("fa-IR"), amount: addedAmount, parts: addedAmount, wage: 0 }] : details.invoices };
+    saveStorage("tlift_contract_details", contractDetailsMap);
+    if (addedParts.length) appStore.consumeTechnicianParts(editor, addedParts);
+    recordAudit({ action: "ویرایش تکمیلی گزارش پس از پایان سرویس", entityType: "service", entityId: `${contractId}-${monthId}`, title: contracts.find(c=>c.id===contractId)?.building || `قرارداد ${contractId}`, actor: editor, before: previous, after: updated });
+    notifyListeners(); return true;
   },
 
   addPayment: (
