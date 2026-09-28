@@ -4,7 +4,7 @@
  * با امکان تنظیم فاصله زمانی همگام‌سازی توسط کاربر
  */
 import { supabase } from "@/integrations/supabase/client";
-import { getDeviceToken } from "./utils/deviceAuth";
+import { clearDeviceToken, getDeviceToken } from "./utils/deviceAuth";
 
 export type SyncStatus = "idle" | "syncing" | "online" | "offline" | "error";
 
@@ -322,23 +322,35 @@ function autoMergeConflict(key: string, serverData: unknown, localData: unknown)
   return undefined;
 }
 
+async function fetchWithDeviceAuth(endpoint: string, init?: RequestInit) {
+  let token = await getDeviceToken();
+  let separator = endpoint.includes("?") ? "&" : "?";
+  let response = await withTimeout(fetch(`${endpoint}${separator}token=${encodeURIComponent(token)}`, init));
+  if (response.status === 401) {
+    // توکن دستگاه ممکن است بعد از تعویض فایل‌های هاست یا پاک‌شدن registry منقضی شده باشد.
+    clearDeviceToken();
+    token = await getDeviceToken();
+    response = await withTimeout(fetch(`${endpoint}${separator}token=${encodeURIComponent(token)}`, init));
+  }
+  return response;
+}
+
 async function apiUpsert(key: string, data: unknown, updated_at: string) {
   let lastError: unknown;
   for (const endpoint of syncApiCandidates()) {
     try {
-      const authToken = await getDeviceToken();
-      const res = await withTimeout(fetch(`${endpoint}?token=${encodeURIComponent(authToken)}`, {
+      const res = await fetchWithDeviceAuth(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, data, updated_at, base_updated_at: loadMeta()[key] || null }),
-      }));
+      });
       if (res.status === 409) {
         const conflict = await res.json().catch(() => ({}));
         const merged = autoMergeConflict(key, conflict.server?.data, data);
         if (merged !== undefined && conflict.server?.updated_at) {
-          const retry = await withTimeout(fetch(`${endpoint}?token=${encodeURIComponent(authToken)}`, {
+          const retry = await fetchWithDeviceAuth(endpoint, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ key, data: merged, updated_at, base_updated_at: conflict.server.updated_at }),
-          }));
+          });
           if (retry.ok) {
             queue[key] = merged;
             forceApplyMerged(key, merged);
@@ -367,8 +379,7 @@ async function apiSelectPrefix(prefix: string): Promise<{ key: string; data: unk
   let lastError: unknown;
   for (const endpoint of syncApiCandidates()) {
     try {
-      const authToken = await getDeviceToken();
-      const res = await withTimeout(fetch(`${endpoint}?prefix=${encodeURIComponent(prefix)}&token=${encodeURIComponent(authToken)}`));
+      const res = await fetchWithDeviceAuth(`${endpoint}?prefix=${encodeURIComponent(prefix)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rows = await res.json();
       return Array.isArray(rows) ? rows : [];
