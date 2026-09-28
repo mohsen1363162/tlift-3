@@ -5,6 +5,7 @@ import type { BuildingCsvRow } from "./utils/buildingsCsv";
 import { getContractServiceDay } from "./utils/serviceScheduleDays";
 import { getContractOfficialFee } from "./data/contractServiceFees";
 import { matchRegionServices } from "./utils/regionServiceImporter";
+import { recordAudit } from "./auditLog";
 import {
   RAW_CSV_DATA,
   RAW_CUSTOMERS_CSV_DATA,
@@ -1111,6 +1112,8 @@ export const appStore = {
     return contract;
   },
   updateContract: (updated: Contract) => {
+    const previous = contracts.find((c) => c.id === updated.id);
+    if (previous) recordAudit({ action: "ویرایش قرارداد", entityType: "contract", entityId: String(updated.id), title: updated.building, before: previous, after: updated });
     contracts = contracts.map((c) => (c.id === updated.id ? updated : c));
     saveStorage("tlift_contracts", contracts);
     notifyListeners();
@@ -1133,6 +1136,7 @@ export const appStore = {
       kind: "renew",
       renewalHistory: [...(previous?.renewalHistory || []), ...(previous ? [{ start: previous.start, end: previous.end, monthlyServiceFee: previous.monthlyServiceFee || 0, renewedAt: Date.now() }] : [])],
     };
+    recordAudit({ action: "تمدید قرارداد", entityType: "contract", entityId: String(renewed.id), title: renewed.building, before: previous, after: renewed });
     contracts = contracts.map((c) => c.id === renewed.id ? renewed : c);
     saveStorage("tlift_contracts", contracts);
     const details = appStore.getContractDetails(renewed.id);
@@ -1349,6 +1353,7 @@ export const appStore = {
     };
 
     saveStorage("tlift_contract_details", contractDetailsMap);
+    recordAudit({ action: "ثبت نهایی سرویس", entityType: "service", entityId: `${contractId}-${monthId}`, title: contracts.find(c=>c.id===contractId)?.building || `قرارداد ${contractId}`, actor: serviceData.doneBy || serviceData.techs[0], before: targetMonth, after: updatedMonths.find(m=>m.id===monthId) });
     scheduledServices = scheduledServices.map((service) => service.contractId === contractId && service.monthId === monthId ? { ...service, status: "done", actualDate: serviceData.doneDate, lastUpdated: Date.now() } : service);
     saveStorage("tlift_scheduled_services", scheduledServices);
     if (serviceData.partsList?.length) {
@@ -1677,6 +1682,7 @@ export const appStore = {
   // COMPANY ACCESS & GPS POLICY
   getCompanyAccessSettings: () => companyAccessSettings,
   updateCompanyAccessSettings: (settings: CompanyAccessSettings) => {
+    recordAudit({ action: "تغییر تنظیمات دسترسی", entityType: "settings", entityId: "company-access", title: "تنظیمات شرکت", before: companyAccessSettings, after: settings });
     companyAccessSettings = settings;
     saveStorage("tlift_company_access_settings_v1", companyAccessSettings);
     notifyListeners();
@@ -1695,6 +1701,7 @@ export const appStore = {
   getTechnicianPartDeliveries: () => technicianPartDeliveries,
   addTechnicianPartDelivery: (delivery: Omit<TechnicianPartDelivery, "id">) => {
     const item = { ...delivery, id: `delivery-${Date.now()}`, usedQuantity: delivery.usedQuantity || 0, remainingQuantity: delivery.remainingQuantity ?? delivery.quantity, status: delivery.status || "active" } as TechnicianPartDelivery;
+    recordAudit({ action: "تحویل قطعه", entityType: "inventory", entityId: item.id, title: `${item.partName} به ${item.technicianName}`, after: item });
     technicianPartDeliveries = [item, ...technicianPartDeliveries];
     saveStorage("tlift_technician_part_deliveries_v1", technicianPartDeliveries);
     notifyListeners();
@@ -1759,6 +1766,8 @@ export const appStore = {
     notifyListeners();
   },
   updateScheduledService: (id: string, patch: Partial<ScheduledService>) => {
+    const previous = scheduledServices.find((s) => s.id === id);
+    if (previous) recordAudit({ action: patch.technician && patch.technician !== previous.technician ? "تغییر سرویس‌کار تخصیص" : "ویرایش تقسیم کار", entityType: "assignment", entityId: id, title: previous.buildingName, actor: patch.assignedBy, before: previous, after: { ...previous, ...patch } });
     scheduledServices = scheduledServices.map((s) =>
       s.id === id ? { ...s, ...patch, lastUpdated: Date.now() } : s
     );
@@ -1822,12 +1831,15 @@ export const appStore = {
       id: `srv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       lastUpdated: Date.now(),
     };
+    recordAudit({ action: "ایجاد تقسیم کار", entityType: "assignment", entityId: newService.id, title: newService.buildingName, actor: newService.assignedBy, after: newService });
     scheduledServices = [newService, ...scheduledServices];
     saveStorage("tlift_scheduled_services", scheduledServices);
     notifyListeners();
     return newService;
   },
   deleteScheduledService: (id: string) => {
+    const previous = scheduledServices.find((s) => s.id === id);
+    if (previous) recordAudit({ action: "حذف تقسیم کار", entityType: "assignment", entityId: id, title: previous.buildingName, before: previous });
     scheduledServices = scheduledServices.filter((s) => s.id !== id);
     saveStorage("tlift_scheduled_services", scheduledServices);
     notifyListeners();

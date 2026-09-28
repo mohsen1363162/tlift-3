@@ -58,6 +58,7 @@ const CpanelSettingsPage = lazy(() => import("./components/CpanelSettingsPage"))
 const TechnicianMobileApp = lazy(() => import("./components/mobile/TechnicianMobileApp"));
 const TechnicianDashboard = lazy(() => import("./components/TechnicianDashboard"));
 const SmartAssistantPage = lazy(() => import("./components/SmartAssistantPage"));
+const AuditHistoryPage = lazy(() => import("./components/AuditHistoryPage"));
 const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
 const TriangleKeyLocationsPage = lazy(() => import("./components/TriangleKeyLocationsPage"));
@@ -99,6 +100,7 @@ type Tab = {
     | "cpanel"
     | "technicianDashboard"
     | "smartAssistant"
+    | "auditHistory"
     | "accessManagement"
     | "triangleKeyLocations"
     | "serviceReport";
@@ -245,6 +247,7 @@ export default function App() {
 
   const openMenuItem = (label: string) => {
     if (label === "دستیار هوشمند تلیفت") addTab("دستیار هوشمند", "smartAssistant");
+    else if (label === "تاریخچه تغییرات حساس") addTab("تاریخچه تغییرات", "auditHistory");
     else if (label === "مدیریت مدیران و دسترسی‌ها") addTab("مدیریت دسترسی‌ها", "accessManagement");
     else if (["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری", "قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"].includes(label))
       addTab("داشبورد سرویس‌کاران", "technicianDashboard");
@@ -709,6 +712,8 @@ export default function App() {
               <TechnicianDashboard t={t} />
             ) : current?.kind === "smartAssistant" ? (
               <SmartAssistantPage t={t} />
+            ) : current?.kind === "auditHistory" ? (
+              <AuditHistoryPage t={t} />
             ) : current?.kind === "accessManagement" ? (
               <AccessManagementPage t={t} />
             ) : current?.kind === "triangleKeyLocations" ? (

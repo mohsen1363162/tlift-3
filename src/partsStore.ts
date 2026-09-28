@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { pushKey, registerApplier } from "./cloudSync";
+import { recordAudit } from "./auditLog";
 
 export type PartItem = {
   id: number;
@@ -84,6 +85,8 @@ export const partsApi = {
     emit();
   },
   update: (p: PartItem) => {
+    const previous = parts.find((x) => x.id === p.id);
+    if (previous) recordAudit({ action: previous.price !== p.price ? "تغییر قیمت قطعه" : "ویرایش قطعه", entityType: "part", entityId: String(p.id), title: p.name, before: previous, after: p });
     parts = parts.map((x) => (x.id === p.id ? p : x));
     emit();
   },
