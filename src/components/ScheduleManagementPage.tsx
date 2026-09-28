@@ -150,6 +150,19 @@ export default function ScheduleManagementPage({
     return Array.from(set);
   }, [services, registeredZones]);
 
+  const monthCounts = useMemo(() => {
+    let s06 = 0;
+    let s07 = 0;
+    services.forEach((s) => {
+      const norm = normalizeServiceJalaliDate(s.date);
+      if (norm.startsWith("1405/06")) s06++;
+      if (norm.startsWith("1405/07")) s07++;
+    });
+    return { "1405/06": s06, "1405/07": s07 };
+  }, [services]);
+
+  const toFaDigits = (n: number | string) => Number(n || 0).toLocaleString("fa-IR");
+
   // Filtered services
   const filteredServices = useMemo(() => {
     const normStart = startDate ? normalizeServiceJalaliDate(startDate) : "";
@@ -447,13 +460,24 @@ export default function ScheduleManagementPage({
                   setEndDate("");
                   setDayPreset("all");
                 }}
-                className={`rounded px-2.5 py-1 font-bold transition cursor-pointer ${
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1 font-bold transition cursor-pointer ${
                   selectedMonth === "1405/06" && !startDate && !endDate
                     ? "bg-amber-500 text-black shadow-sm"
                     : "text-zinc-300 hover:text-white"
                 }`}
               >
-                شهریور ۱۴۰۵
+                <span>شهریور ۱۴۰۵</span>
+                {monthCounts["1405/06"] > 0 && (
+                  <span
+                    className={`rounded px-1 text-[10px] ${
+                      selectedMonth === "1405/06" && !startDate && !endDate
+                        ? "bg-black/20 text-black"
+                        : "bg-zinc-800 text-amber-400"
+                    }`}
+                  >
+                    ({toFaDigits(monthCounts["1405/06"])})
+                  </span>
+                )}
               </button>
               <button
                 type="button"
@@ -463,13 +487,24 @@ export default function ScheduleManagementPage({
                   setEndDate("");
                   setDayPreset("all");
                 }}
-                className={`rounded px-2.5 py-1 font-bold transition cursor-pointer ${
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1 font-bold transition cursor-pointer ${
                   selectedMonth === "1405/07" && !startDate && !endDate
                     ? "bg-amber-500 text-black shadow-sm"
                     : "text-zinc-300 hover:text-white"
                 }`}
               >
-                مهر ۱۴۰۵
+                <span>مهر ۱۴۰۵</span>
+                {monthCounts["1405/07"] > 0 && (
+                  <span
+                    className={`rounded px-1 text-[10px] ${
+                      selectedMonth === "1405/07" && !startDate && !endDate
+                        ? "bg-black/20 text-black"
+                        : "bg-zinc-800 text-amber-400"
+                    }`}
+                  >
+                    ({toFaDigits(monthCounts["1405/07"])})
+                  </span>
+                )}
               </button>
               <button
                 type="button"
