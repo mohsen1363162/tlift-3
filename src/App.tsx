@@ -60,6 +60,7 @@ const TechnicianDashboard = lazy(() => import("./components/TechnicianDashboard"
 const SmartAssistantPage = lazy(() => import("./components/SmartAssistantPage"));
 const AuditHistoryPage = lazy(() => import("./components/AuditHistoryPage"));
 const SystemHealthPage = lazy(() => import("./components/SystemHealthPage"));
+const IncompleteDataCenter = lazy(() => import("./components/IncompleteDataCenter"));
 const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
 const TriangleKeyLocationsPage = lazy(() => import("./components/TriangleKeyLocationsPage"));
@@ -103,6 +104,7 @@ type Tab = {
     | "smartAssistant"
     | "auditHistory"
     | "systemHealth"
+    | "incompleteData"
     | "accessManagement"
     | "triangleKeyLocations"
     | "serviceReport";
@@ -251,6 +253,7 @@ export default function App() {
     if (label === "دستیار هوشمند تلیفت") addTab("دستیار هوشمند", "smartAssistant");
     else if (label === "تاریخچه تغییرات حساس") addTab("تاریخچه تغییرات", "auditHistory");
     else if (label === "سلامت سرور و همگام‌سازی") addTab("سلامت سیستم", "systemHealth");
+    else if (label === "مرکز اطلاعات ناقص") addTab("اطلاعات ناقص", "incompleteData");
     else if (label === "مدیریت مدیران و دسترسی‌ها") addTab("مدیریت دسترسی‌ها", "accessManagement");
     else if (["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری", "قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"].includes(label))
       addTab("داشبورد سرویس‌کاران", "technicianDashboard");
@@ -719,6 +722,8 @@ export default function App() {
               <AuditHistoryPage t={t} />
             ) : current?.kind === "systemHealth" ? (
               <SystemHealthPage t={t} />
+            ) : current?.kind === "incompleteData" ? (
+              <IncompleteDataCenter t={t} />
             ) : current?.kind === "accessManagement" ? (
               <AccessManagementPage t={t} />
             ) : current?.kind === "triangleKeyLocations" ? (
