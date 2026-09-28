@@ -16,6 +16,7 @@ import { TECHS } from "./ServicesCalendar";
 import { partsApi } from "./partsStore";
 import BreakdownModal from "./components/BreakdownModal";
 import PartsManagementModal from "./components/PartsManagementModal";
+import { formatMoneyInput, parseMoneyInput, rialToTomanWords } from "./utils/moneyFormat";
 
 const fa = (n: string | number) => String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]);
 const money = (n: number) => fa(n.toLocaleString("en-US")) + " ریال";
@@ -348,32 +349,41 @@ export default function ServiceForm({
             <Field label="دستمزد">
               <div className="flex items-center gap-1">
                 <input
-                  value={wage}
-                  onChange={(e) => setWage(+e.target.value.replace(/\D/g, "") || 0)}
+                  value={formatMoneyInput(wage)}
+                  onChange={(e) => setWage(parseMoneyInput(e.target.value))}
+                  inputMode="numeric"
+                  dir="ltr"
                   className={inputCls(t)}
                 />
                 <span className={`rounded border px-2 py-1.5 text-[11px] ${t.border} ${t.sub}`}>ریال</span>
               </div>
+              <div className="mt-1 text-[10px] text-emerald-500">{rialToTomanWords(wage)}</div>
             </Field>
             <Field label="ایاب ذهاب">
               <div className="flex items-center gap-1">
                 <input
-                  value={trip}
-                  onChange={(e) => setTrip(+e.target.value.replace(/\D/g, "") || 0)}
+                  value={formatMoneyInput(trip)}
+                  onChange={(e) => setTrip(parseMoneyInput(e.target.value))}
+                  inputMode="numeric"
+                  dir="ltr"
                   className={inputCls(t)}
                 />
                 <span className={`rounded border px-2 py-1.5 text-[11px] ${t.border} ${t.sub}`}>ریال</span>
               </div>
+              <div className="mt-1 text-[10px] text-emerald-500">{rialToTomanWords(trip)}</div>
             </Field>
             <Field label="تخفیف" className="col-span-2">
               <div className="flex items-center gap-1">
                 <input
-                  value={discount}
-                  onChange={(e) => setDiscount(+e.target.value.replace(/\D/g, "") || 0)}
+                  value={formatMoneyInput(discount)}
+                  onChange={(e) => setDiscount(parseMoneyInput(e.target.value))}
+                  inputMode="numeric"
+                  dir="ltr"
                   className={inputCls(t)}
                 />
                 <span className={`rounded border px-2 py-1.5 text-[11px] ${t.border} ${t.sub}`}>ریال</span>
               </div>
+              <div className="mt-1 text-[10px] text-emerald-500">{rialToTomanWords(discount)}</div>
             </Field>
           </div>
 

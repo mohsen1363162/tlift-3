@@ -57,6 +57,7 @@ import {
   Copy,
 } from "lucide-react";
 import type { Contract } from "../../data";
+import { formatMoneyInput, parseMoneyInput, rialToTomanWords } from "../../utils/moneyFormat";
 import {
   appStore,
   useContracts,
@@ -72,7 +73,7 @@ import {
   ServiceChecklistStatus,
   ServicePartItem,
 } from "../../store";
-import { useParts } from "../../partsStore";
+import { partsApi, useParts } from "../../partsStore";
 import { syncNow, toggleManualOffline } from "../../cloudSync";
 import SyncIndicator, { useSyncState } from "../SyncIndicator";
 import AndroidAppModal from "../AndroidAppModal";
@@ -1763,7 +1764,7 @@ export default function TechnicianMobileApp({
                   <div key={i} className="flex items-center gap-2 border-b px-3 py-2 text-[12.5px]">
                     <div className="flex-1">
                       <div className="font-medium text-gray-800">{p.name}</div>
-                      <div className="text-[11px] text-gray-500">{fa(p.price)} ریال / {p.unit}</div>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500"><span>{fa(p.price.toLocaleString("en-US"))} ریال / {p.unit}</span><button type="button" onClick={() => { const entered = window.prompt(`قیمت جدید «${p.name}» به ریال`, formatMoneyInput(p.price)); if (entered === null) return; const next = parseMoneyInput(entered); if (!next || next === p.price) return; if (!window.confirm(`قیمت ${p.name} از ${p.price.toLocaleString("fa-IR")} به ${next.toLocaleString("fa-IR")} ریال تغییر کند؟\n\n${rialToTomanWords(next)}\n\nاز درست بودن مبلغ مطمئن هستید؟`)) return; setUsedParts(list => list.map((item,index) => index === i ? {...item,price:next} : item)); const catalogPart = parts.find(item => item.code === p.code || item.name === p.name); if (catalogPart) partsApi.update({...catalogPart,price:next}); notify("قیمت قطعه با تأیید شما به‌روزرسانی شد"); }} className="rounded bg-blue-50 px-2 py-0.5 font-bold text-blue-600">ویرایش قیمت</button></div>
                     </div>
                     <NumberStepper
                       value={p.qty}
@@ -1982,11 +1983,14 @@ export default function TechnicianMobileApp({
             <label key={l} className="text-[12px] text-gray-600">
               {l}
               <input
-                type="number"
-                value={v || ""}
-                onChange={(e) => s(Number(e.target.value) || 0)}
-                className="mt-1 w-full rounded-lg border bg-white px-2 py-2 text-[13px] outline-none"
+                type="text"
+                inputMode="numeric"
+                value={formatMoneyInput(v)}
+                onChange={(e) => s(parseMoneyInput(e.target.value))}
+                className="mt-1 w-full rounded-lg border bg-white px-2 py-2 text-left text-[13px] font-bold outline-none"
+                dir="ltr"
               />
+              <span className="mt-1 block min-h-8 rounded bg-emerald-50 px-2 py-1 text-[10px] leading-4 text-emerald-700">{v ? rialToTomanWords(v) : "صفر تومان"}</span>
             </label>
           ))}
         </div>
@@ -2073,7 +2077,7 @@ export default function TechnicianMobileApp({
               onTouchStart={sigStart}
               onTouchMove={sigMove}
               onTouchEnd={sigEnd}
-              className={`h-40 w-full touch-none rounded-xl border-2 bg-white ${signed ? "border-emerald-500" : "border-dashed border-gray-300"}`}
+              className={`h-52 w-full touch-none rounded-xl border-2 bg-white ${signed ? "border-emerald-500" : "border-dashed border-gray-300"}`}
             />
             <div className="mt-2 flex gap-2">
               <button type="button" onClick={sigClear} className="flex flex-1 items-center justify-center gap-1 rounded-lg border bg-white py-2 text-[12.5px]">
