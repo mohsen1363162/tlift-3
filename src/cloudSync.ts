@@ -133,9 +133,11 @@ const queue: Record<string, unknown> = loadQueue();
 const timers: Record<string, ReturnType<typeof setTimeout>> = {};
 let applyingRemote = false;
 let periodicTimer: ReturnType<typeof setInterval> | null = null;
-const loadConflicts = (): Record<string, unknown> => {
+export type SyncConflict = { local: unknown; server?: { key?: string; data?: unknown; updated_at?: string }; detectedAt: number };
+export const getSyncConflicts = (): Record<string, SyncConflict> => {
   try { return JSON.parse(localStorage.getItem(CONFLICTS_KEY) || "{}"); } catch { return {}; }
 };
+const loadConflicts = getSyncConflicts;
 
 let state: SyncState = {
   status: typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "idle",
@@ -296,11 +298,13 @@ async function apiUpsert(key: string, data: unknown, updated_at: string) {
         conflicts[key] = { local: data, server: conflict.server, detectedAt: Date.now() };
         localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts));
         setState({ conflicts: Object.keys(conflicts).length });
-        throw new Error("تداخل اطلاعات: این رکورد در دستگاه دیگری تغییر کرده و برای بررسی نگهداری شد.");
+        const conflictError = new Error("تداخل اطلاعات: این رکورد در دستگاه دیگری تغییر کرده و برای بررسی نگهداری شد.");
+        (conflictError as Error & { isConflict?: boolean }).isConflict = true;
+        throw conflictError;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return;
-    } catch (error) { lastError = error; }
+    } catch (error) { if ((error as Error & { isConflict?: boolean })?.isConflict) throw error; lastError = error; }
   }
   throw new Error(`خطای سرور همگام‌سازی: ${String((lastError as Error)?.message || lastError)}`);
 }
@@ -413,6 +417,27 @@ const appliers = new Set<Applier>();
 export function registerApplier(fn: Applier) {
   appliers.add(fn);
   return () => appliers.delete(fn);
+}
+
+export async function resolveSyncConflict(key: string, choice: "local" | "server") {
+  const conflicts = getSyncConflicts();
+  const conflict = conflicts[key];
+  if (!conflict) return false;
+  if (choice === "server") {
+    delete queue[key]; saveQueue(queue);
+    const row = conflict.server;
+    if (row && row.data !== undefined) {
+      const meta = loadMeta(); delete meta[key]; saveMeta(meta);
+      applyRemote(key, row.data, row.updated_at || new Date().toISOString());
+    }
+  } else {
+    queue[key] = conflict.local; saveQueue(queue);
+    if (conflict.server?.updated_at) { const meta=loadMeta(); meta[key]=conflict.server.updated_at; saveMeta(meta); }
+  }
+  delete conflicts[key]; localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts));
+  setState({ conflicts: Object.keys(conflicts).length, pending: Object.keys(queue).length });
+  if (choice === "local" && navigator.onLine && !state.isManualOffline) return flushKey(key);
+  return true;
 }
 
 function applyRemote(key: string, data: unknown, updated_at: string) {
