@@ -72,10 +72,28 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
+        // کتابخانه بزرگ Excel فقط هنگام ورود CSV دریافت می‌شود و نصب اولیه موبایل را سنگین نمی‌کند.
+        globIgnores: ["**/assets/xlsx-*.js"],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => /\/assets\/xlsx-.*\.js$/i.test(url.pathname),
+            handler: "StaleWhileRevalidate",
+            options: { cacheName: "tlift-excel-on-demand-v1", cacheableResponse: { statuses: [0, 200] } },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.includes("/uploads/") || /\.(?:jpg|jpeg|png|webp)$/i.test(url.pathname),
+            handler: "CacheFirst",
+            options: { cacheName: "tlift-photos-v1", expiration: { maxEntries: 180, maxAgeSeconds: 30 * 24 * 60 * 60 }, cacheableResponse: { statuses: [0, 200] } },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.endsWith("/api/sync.php") || url.pathname.endsWith("/sync.php"),
+            handler: "NetworkOnly",
+          },
+        ],
       },
       // Service Worker در محیط توسعه/Preview فعال نمی‌شود؛ ثبت آن در dev
       // می‌تواند کش قدیمی یا چرخه reload بسازد و صفحه سفید نشان دهد.
@@ -224,6 +242,20 @@ export default defineConfig({
       },
     },
   ],
+  build: {
+    target: "es2020",
+    cssCodeSplit: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/@supabase") || id.includes("node_modules/@realtime")) return "vendor-supabase";
+          if (id.includes("node_modules/react") || id.includes("node_modules/scheduler")) return "vendor-react";
+          if (id.includes("node_modules/@radix-ui") || id.includes("node_modules/cmdk") || id.includes("node_modules/vaul")) return "vendor-ui";
+          if (id.includes("node_modules/date-fns")) return "vendor-date";
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
