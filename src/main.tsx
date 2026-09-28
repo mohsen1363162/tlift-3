@@ -10,6 +10,9 @@ import { startCloudSync } from './cloudSync';
 import { startDailyDeviceBackups } from './utils/dailyBackups';
 import { migrateInlinePhotos } from './utils/photoStorage';
 import { startDeviceHeartbeat } from './utils/serverHealth';
+import AppErrorBoundary from './components/AppErrorBoundary';
+import { startGlobalErrorLogging } from './utils/errorLogger';
+import { APP_VERSION } from './utils/appUpdater';
 
 // بروزرسانی PWA: در هر بار ورود/بازگشت به صفحه، نسخه جدید Service Worker
 // مستقیماً از سرور بررسی می‌شود. پس از فعال‌شدن نسخه تازه فقط یک‌بار صفحه
@@ -44,6 +47,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.setInterval(updateServiceWorker, 30 * 60 * 1000);
 }
 
+startGlobalErrorLogging(APP_VERSION);
 // شروع همگام‌سازی ابری (Supabase) — در صورت قطع بودن اینترنت، آفلاین ادامه می‌دهد
 startCloudSync().catch(() => {
   /* بدون اینترنت یا خطای سرور: اپ به‌صورت آفلاین کار می‌کند */
@@ -78,9 +82,11 @@ const AppGate: React.FC = () => {
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AuthProvider>
-      <AppGate />
-      <Toaster />
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <AppGate />
+        <Toaster />
+      </AuthProvider>
+    </AppErrorBoundary>
   </React.StrictMode>
 );
