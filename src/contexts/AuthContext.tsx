@@ -120,9 +120,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session.user);
       }
       setLoading(false);
+    }).catch((err) => {
+      console.warn('Supabase getSession failed, continuing in offline/local mode', err);
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // سقف زمانی برای جلوگیری از گیر کردن در وضعیت بارگذاری اولیه
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 1500);
+
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loginAsCustomer = (incomingData: CustomerAuthData) => {

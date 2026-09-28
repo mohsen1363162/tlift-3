@@ -233,8 +233,8 @@ const saveMeta = (m: Record<string, string>) => {
 
 const db = () => (supabase as any).from(TABLE);
 
-// تایم‌اوت برای جلوگیری از معلق ماندن در اینترنت ضعیف
-function withTimeout(promise: Promise<any>, ms = 8000): Promise<any> {
+// تایم‌اوت برای جلوگیری از معلق ماندن در اینترنت ضعیف (۲۵ ثانیه برای تبادل امن دیتابیس)
+function withTimeout(promise: Promise<any>, ms = 25000): Promise<any> {
   return Promise.race([
     promise,
     new Promise<any>((_, reject) =>
@@ -285,8 +285,19 @@ const syncApiCandidates = (): string[] => {
 
 function mergeById(serverItems: any[] = [], localItems: any[] = []) {
   const map = new Map<string, any>();
-  serverItems.forEach((item, index) => map.set(String(item?.id ?? `server-${index}`), item));
-  localItems.forEach((item, index) => map.set(String(item?.id ?? `local-${index}`), { ...map.get(String(item?.id ?? `local-${index}`)), ...item }));
+  serverItems.forEach((item, index) => {
+    const k = String(item?.id ?? item?.contractId ?? item?.no ?? `server-${index}`);
+    map.set(k, item);
+  });
+  localItems.forEach((item, index) => {
+    const k = String(item?.id ?? item?.contractId ?? item?.no ?? `local-${index}`);
+    const existing = map.get(k);
+    if (!existing) {
+      map.set(k, item);
+    } else {
+      map.set(k, { ...existing, ...item });
+    }
+  });
   return Array.from(map.values());
 }
 
@@ -303,7 +314,13 @@ function mergeContractDetails(serverData: any, localData: any) {
     (l.months || []).forEach((month: any) => {
       const previous = monthMap.get(String(month.id));
       const localEdited = Number(month.postCompletionEditedAt || 0);
-      if (!previous || (month.done && !previous.done) || (localEdited > 0 && localEdited >= Number(previous.postCompletionEditedAt || 0))) monthMap.set(String(month.id), { ...previous, ...month });
+      if (
+        !previous ||
+        (month.done && !previous.done) ||
+        (localEdited > 0 && localEdited >= Number(previous.postCompletionEditedAt || 0))
+      ) {
+        monthMap.set(String(month.id), { ...previous, ...month });
+      }
     });
     merged[contractId] = {
       ...s, ...l,
@@ -316,15 +333,23 @@ function mergeContractDetails(serverData: any, localData: any) {
   return merged;
 }
 
-function autoMergeConflict(key: string, serverData: unknown, localData: unknown) {
+function autoMergeConflict(key: string, serverData: unknown, localData: unknown): unknown {
   if (key === "tlift_contract_details") return mergeContractDetails(serverData, localData);
-  if (["tlift_scheduled_services", "tlift_notifications_v1", "tlift_technician_part_deliveries_v1", "tlift_audit_log_v1"].includes(key) && Array.isArray(serverData) && Array.isArray(localData)) return mergeById(serverData, localData);
-  return undefined;
+  if (Array.isArray(serverData) && Array.isArray(localData)) {
+    if (key === "tlift_pinned_contracts_v1") {
+      return Array.from(new Set([...serverData, ...localData]));
+    }
+    return mergeById(serverData, localData);
+  }
+  if (serverData && typeof serverData === "object" && localData && typeof localData === "object") {
+    return { ...(localData as object), ...(serverData as object) };
+  }
+  return serverData !== undefined ? serverData : localData;
 }
 
 async function fetchWithDeviceAuth(endpoint: string, init?: RequestInit) {
   let token = await getDeviceToken();
-  let separator = endpoint.includes("?") ? "&" : "?";
+  const separator = endpoint.includes("?") ? "&" : "?";
   let response = await withTimeout(fetch(`${endpoint}${separator}token=${encodeURIComponent(token)}`, init));
   if (response.status === 401) {
     // توکن دستگاه ممکن است بعد از تعویض فایل‌های هاست یا پاک‌شدن registry منقضی شده باشد.
@@ -352,11 +377,15 @@ async function apiUpsert(key: string, data: unknown, updated_at: string) {
             body: JSON.stringify({ key, data: merged, updated_at, base_updated_at: conflict.server.updated_at }),
           });
           if (retry.ok) {
-            queue[key] = merged;
+            delete queue[key];
+            saveQueue(queue);
             forceApplyMerged(key, merged);
+            const meta = loadMeta();
+            meta[key] = conflict.server.updated_at;
+            saveMeta(meta);
             const conflicts = loadConflicts(); delete conflicts[key];
             localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts));
-            setState({ conflicts: Object.keys(conflicts).length });
+            setState({ conflicts: Object.keys(conflicts).length, pending: Object.keys(queue).length });
             return;
           }
         }
@@ -467,8 +496,12 @@ export async function flushAll(): Promise<boolean> {
   const keys = Object.keys(queue);
   if (keys.length === 0) return true;
 
-  const results = await Promise.all(keys.map((k) => flushKey(k)));
-  const allOk = results.every(Boolean);
+  // ارسال ترتیبی برای جلوگیری از اشباع پهنای باند و همزمانی در هاست اشتراکی
+  let allOk = true;
+  for (const k of keys) {
+    const ok = await flushKey(k);
+    if (!ok) allOk = false;
+  }
   if (allOk) {
     clearOfflineServices();
   }
@@ -530,11 +563,48 @@ function prepareStoredConflictMerges() {
 }
 
 function applyRemote(key: string, data: unknown, updated_at: string) {
-  // اگر برای این کلید تغییرات محلی ارسال‌نشده داریم، داده سرور آن را رونویسی نکند
-  if (queue[key] !== undefined) return;
-
   const meta = loadMeta();
-  if (meta[key] && meta[key] >= updated_at) return; // قبلاً داریم یا جدیدتر است
+
+  // اگر برای این کلید داده‌ای در صف داریم، آن را ادغام کنیم یا اگر تفاوتی ندارد از صف حذف کنیم
+  if (queue[key] !== undefined) {
+    try {
+      const merged = autoMergeConflict(key, data, queue[key]);
+      if (merged !== undefined) {
+        const isIdentical = JSON.stringify(merged) === JSON.stringify(data);
+        if (isIdentical) {
+          // تغییرات محلی در واقع نسخه قدیمی/بوت‌استرپ بود یا تفاوتی با سرور ندارد؛ از صف پاک می‌شود
+          delete queue[key];
+          saveQueue(queue);
+          setState({ pending: Object.keys(queue).length });
+        } else {
+          // تغییرات واقعی محلی وجود دارد؛ نسخه ادغام‌شده را در صف و متا ذخیره می‌کنیم
+          queue[key] = merged;
+          saveQueue(queue);
+          setState({ pending: Object.keys(queue).length });
+        }
+        // اعمال نسخه به‌روزشده در برنامه تا خدمات همکاران فوراً در صفحه دیده شوند
+        applyingRemote = true;
+        try {
+          appliers.forEach((applier) => applier(key, merged));
+        } finally {
+          applyingRemote = false;
+        }
+        meta[key] = updated_at;
+        saveMeta(meta);
+        return;
+      }
+    } catch (e) {
+      console.warn("[cloudSync] applyRemote autoMerge error:", e);
+    }
+    if (JSON.stringify(queue[key]) === JSON.stringify(data)) {
+      delete queue[key];
+      saveQueue(queue);
+      setState({ pending: Object.keys(queue).length });
+    }
+  }
+
+  if (meta[key] && meta[key] >= updated_at && queue[key] === undefined) return; // قبلاً داریم یا جدیدتر است
+
   applyingRemote = true;
   try {
     appliers.forEach((applier) => applier(key, data));
@@ -597,11 +667,43 @@ export function startRealtime() {
   }
 }
 
+// پاک‌سازی صف‌های قدیمی که در راه‌اندازی اولیه بدون تغییر کاربر در صف مانده‌اند
+function purgeBootstrapFromQueue() {
+  const bootstrapRestored = localStorage.getItem("tlift_bootstrap_restored_v1");
+  if (!bootstrapRestored) return;
+  const meta = loadMeta();
+  let changed = false;
+  const BOOTSTRAP_KEYS = [
+    "tlift_company_access_settings_v1",
+    "tlift_contract_geo_locations_v1",
+    "tlift_customers",
+    "tlift_contracts",
+    "tlift_active_service_assignments_v1",
+    "tlift_contract_ribbon_v2",
+    "tlift_pinned_contracts_v1",
+    "tlift_scheduled_services",
+    "tlift_contract_details",
+  ];
+  for (const k of BOOTSTRAP_KEYS) {
+    if (queue[k] !== undefined && !meta[k]) {
+      delete queue[k];
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveQueue(queue);
+    setState({ pending: Object.keys(queue).length });
+  }
+}
+
 // ---- bootstrap ----
 let started = false;
 export async function startCloudSync() {
   if (started) return;
   started = true;
+
+  // پاک‌سازی صف‌های کاذب حاصل از راه‌اندازی اولیه بوت‌استرپ
+  purgeBootstrapFromQueue();
 
   // تداخل‌های نسخه‌های قبلی برای داده‌های قابل‌ادغام، بدون حذف گزارش هیچ سرویس‌کار آماده ارسال می‌شوند.
   prepareStoredConflictMerges();
@@ -630,7 +732,7 @@ export async function startCloudSync() {
   window.addEventListener("online", () => {
     if (!state.isManualOffline) {
       setState({ status: "syncing" });
-      flushAll().then(() => pullAll());
+      pullAll().then(() => flushAll());
     }
   });
 
@@ -658,8 +760,10 @@ export async function syncNow(): Promise<{ success: boolean; message: string }> 
 
   setState({ status: "syncing" });
   try {
-    const pushed = await flushAll();
+    // اول: دریافت آخرین ثبت‌های همکاران از سرور و ادغام با تغییرات محلی
     const pulled = await pullAll();
+    // دوم: ارسال تغییرات باقیمانده به سرور
+    const pushed = await flushAll();
 
     if (pushed && pulled) {
       clearOfflineServices();
@@ -675,6 +779,20 @@ export async function syncNow(): Promise<{ success: boolean; message: string }> 
       return {
         success: true,
         message: "همگام‌سازی کامل با سرور انجام شد و همه اطلاعات به‌روزرسانی شدند.",
+      };
+    } else if (pulled) {
+      // داده‌های همکاران با موفقیت دانلود و در برنامه بارگذاری شد
+      const syncedAt = Date.now();
+      localStorage.setItem(LAST_SYNC_KEY, String(syncedAt));
+      setState({
+        status: "online",
+        lastSync: syncedAt,
+        pending: Object.keys(queue).length,
+        error: undefined,
+      });
+      return {
+        success: true,
+        message: "اطلاعات همکاران با موفقیت دریافت و همگام شد. موارد باقیمانده صف به زودی ارسال می‌شوند.",
       };
     } else {
       setState({ status: navigator.onLine ? "error" : "offline" });

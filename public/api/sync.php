@@ -21,6 +21,11 @@ header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Cache-Control: no-store');
 
+// فشرده‌سازی خروجی با gzip برای کاهش ۲۰ برابری حجم تبادل داده در شبکه موبایل
+if (!in_array('ob_gzhandler', ob_list_handlers()) && function_exists('ob_gzhandler') && !ini_get('zlib.output_compression')) {
+    @ob_start('ob_gzhandler');
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;

@@ -269,7 +269,6 @@ async function restoreBootstrapWhenEmpty() {
     const entries = bootstrapData.entries || {};
     Object.entries(entries).forEach(([key, value]) => {
       writeLocalStorage(key, value);
-      pushKey(key, value);
     });
     localStorage.setItem("tlift_bootstrap_restored_v1", new Date().toISOString());
     return Object.keys(entries).length > 0;
@@ -278,15 +277,6 @@ async function restoreBootstrapWhenEmpty() {
     return false;
   }
 }
-void restoreBootstrapWhenEmpty().then((restored) => {
-  if (!restored) return;
-  // بازیابی اولیه بدون reload انجام می‌شود تا کاربر وسط فرم ثبت قرارداد به صفحه خانه برنگردد.
-  contracts = loadStorage<Contract[]>("tlift_contracts", contracts);
-  customers = loadStorage<Customer[]>("tlift_customers", customers);
-  const restoredDetails = loadStorage<Record<number, ContractDetails>>("tlift_contract_details", contractDetailsMap);
-  Object.assign(contractDetailsMap, restoredDetails);
-  notifyListeners();
-});
 
 // اعمال مبالغ واقعی و مصوب قراردادها از لیست رسمی مدیریت به حافظه مرورگر
 function syncOfficialContractFees() {
@@ -817,6 +807,170 @@ let zones: ZoneItem[] = loadStorage<ZoneItem[]>("tlift_zones_v2", INITIAL_ZONES)
 let checklistItems: ChecklistItem[] = loadStorage<ChecklistItem[]>("tlift_checklist_v1", INITIAL_CHECKLIST);
 let checklistCategories: string[] = loadStorage<string[]>("tlift_checklist_categories_v1", INITIAL_CHECKLIST_CATEGORIES);
 
+const initialContractDetails: Record<number, ContractDetails> = {
+  1: {
+    months: [
+      {
+        id: 1,
+        m: "خرداد",
+        y: 1405,
+        done: true,
+        date: "1405/03/25",
+        amount: 8500000,
+        paid: true,
+        paidDate: "1405/03/26",
+        paidMethod: "کارت به کارت",
+        paidRef: "TRX-89301",
+      },
+      { id: 2, m: "تیر", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 3, m: "مرداد", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 4, m: "شهریور", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 5, m: "مهر", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 6, m: "آبان", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 7, m: "آذر", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 8, m: "دی", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 9, m: "بهمن", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 10, m: "اسفند", y: 1405, done: false, amount: 8500000, paid: false },
+      { id: 11, m: "فروردین", y: 1406, done: false, amount: 8500000, paid: false },
+      { id: 12, m: "اردیبهشت", y: 1406, done: false, amount: 8500000, paid: false },
+    ],
+    payments: [
+      {
+        id: 1,
+        title: "پیش‌پرداخت اولیه قرارداد",
+        date: "1405/03/01",
+        amount: 8500000,
+        method: "کارت به کارت",
+        ref: "TRX-89301",
+        monthId: 1,
+      },
+    ],
+    invoices: [],
+  },
+};
+
+const contractDetailsMap: Record<number, ContractDetails> = loadStorage<Record<number, ContractDetails>>(
+  "tlift_contract_details",
+  initialContractDetails
+);
+
+// Event Listeners for reactivity
+const listeners = new Set<() => void>();
+const notifyListeners = () => {
+  listeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+};
+
+export function normalizeServiceJalaliDate(val?: string): string {
+  if (!val) return "";
+  const eng = String(val).replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).trim();
+  const m1 = eng.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (m1) {
+    return `${m1[1]}/${String(Number(m1[2])).padStart(2, "0")}/${String(Number(m1[3])).padStart(2, "0")}`;
+  }
+  const JALALI_MONTH_NAMES = ["فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند"];
+  for (let i = 0; i < JALALI_MONTH_NAMES.length; i++) {
+    const mName = JALALI_MONTH_NAMES[i];
+    if (val.includes(mName)) {
+      const dayMatch = eng.match(/(\d{1,2})/);
+      const yearMatch = eng.match(/(\d{4})/);
+      const day = dayMatch ? dayMatch[1] : "01";
+      const year = yearMatch ? yearMatch[1] : "1405";
+      const monthNum = String(i + 1).padStart(2, "0");
+      return `${year}/${monthNum}/${String(Number(day)).padStart(2, "0")}`;
+    }
+  }
+  return val;
+}
+
+export function reconcileScheduledServicesWithContracts(shouldSave = false): boolean {
+  let changed = false;
+
+  // 1. همگام‌سازی وضعیت کارهای زمان‌بندی‌شده با جزئیات واقعی قراردادها
+  scheduledServices = scheduledServices.map((s) => {
+    if (!s.contractId) return s;
+    const cd = contractDetailsMap[s.contractId];
+    if (!cd || !cd.months) return s;
+    const targetMonth = s.monthId ? cd.months.find((m) => m.id === s.monthId) : cd.months.find((m) => m.done);
+    if (targetMonth && targetMonth.done) {
+      const normDate = normalizeServiceJalaliDate(targetMonth.date) || s.date;
+      if (s.status !== "done" || s.actualDate !== targetMonth.date || (targetMonth.doneBy && s.technician !== targetMonth.doneBy)) {
+        changed = true;
+        return {
+          ...s,
+          status: "done",
+          actualDate: targetMonth.date || normDate,
+          technician: targetMonth.doneBy || s.technician,
+          report: targetMonth.report || s.report,
+          lastUpdated: Date.now(),
+        };
+      }
+    }
+    return s;
+  });
+
+  // 2. درج خودکار خدمات انجام‌شده توسط همکاران در مهرماه یا ماه‌های دیگر در لیست زمان‌بندی
+  contracts.forEach((c) => {
+    const cd = contractDetailsMap[c.id];
+    if (!cd || !cd.months) return;
+    cd.months.forEach((m) => {
+      if (!m.done) return;
+      const exists = scheduledServices.some(
+        (s) => s.contractId === c.id && (s.monthId === m.id || (m.date && s.actualDate === m.date))
+      );
+      if (!exists) {
+        const normDate = normalizeServiceJalaliDate(m.date) || "1405/07/06";
+        scheduledServices.push({
+          id: `srv-c${c.id}-m${m.id}`,
+          contractId: c.id,
+          monthId: m.id,
+          date: normDate,
+          actualDate: m.date || normDate,
+          buildingName: c.building,
+          status: "done",
+          technician: m.doneBy || (m.techs && m.techs[0]) || "نامشخص",
+          techCount: (m.techs && m.techs.length) || 1,
+          zone: c.zone || "بدون منطقه",
+          contractNo: c.no,
+          customerName: c.manager,
+          customerPhone: c.phone || "",
+          address: c.address || "",
+          report: m.report,
+          lastUpdated: Date.now(),
+        });
+        changed = true;
+      }
+    });
+  });
+
+  if (changed && shouldSave) {
+    saveStorage("tlift_scheduled_services", scheduledServices);
+  }
+  return changed;
+}
+
+// تطبیق اولیه بلافاصله در زمان بارگذاری فایل
+reconcileScheduledServicesWithContracts(false);
+
+// بازیابی اولیه بدون reload انجام می‌شود تا کاربر وسط فرم ثبت قرارداد به صفحه خانه برنگردد.
+void restoreBootstrapWhenEmpty().then((restored) => {
+  if (!restored) return;
+  contracts = loadStorage<Contract[]>("tlift_contracts", contracts);
+  customers = loadStorage<Customer[]>("tlift_customers", customers);
+  const restoredDetails = loadStorage<Record<number, ContractDetails>>("tlift_contract_details", contractDetailsMap);
+  Object.assign(contractDetailsMap, restoredDetails);
+  reconcileScheduledServicesWithContracts(false);
+  notifyListeners();
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    void syncNow().catch(() => {});
+  }
+});
+
 // Auto-seed CSV contracts if only default demo contracts are present
 // داده نمونه هرگز خودکار وارد نمی‌شود؛ ورود اطلاعات فقط با اقدام صریح مدیر انجام می‌شود.
 const isCsvSeeded = true;
@@ -872,62 +1026,6 @@ if (!isCustCsvSeeded) {
     console.error("Error auto-seeding CSV customers", e);
   }
 }
-const contractDetailsMap: Record<number, ContractDetails> = loadStorage<Record<number, ContractDetails>>(
-  "tlift_contract_details",
-  {
-    1: {
-      months: [
-        {
-          id: 1,
-          m: "خرداد",
-          y: 1405,
-          done: true,
-          date: "1405/03/25",
-          amount: 8500000,
-          paid: true,
-          paidDate: "1405/03/26",
-          paidMethod: "کارت به کارت",
-          paidRef: "TRX-89301",
-        },
-        { id: 2, m: "تیر", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 3, m: "مرداد", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 4, m: "شهریور", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 5, m: "مهر", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 6, m: "آبان", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 7, m: "آذر", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 8, m: "دی", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 9, m: "بهمن", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 10, m: "اسفند", y: 1405, done: false, amount: 8500000, paid: false },
-        { id: 11, m: "فروردین", y: 1406, done: false, amount: 8500000, paid: false },
-        { id: 12, m: "اردیبهشت", y: 1406, done: false, amount: 8500000, paid: false },
-      ],
-      payments: [
-        {
-          id: 1,
-          title: "پیش‌پرداخت اولیه قرارداد",
-          date: "1405/03/01",
-          amount: 8500000,
-          method: "کارت به کارت",
-          ref: "TRX-89301",
-          monthId: 1,
-        },
-      ],
-      invoices: [],
-    },
-  }
-);
-
-// Event Listeners for reactivity
-const listeners = new Set<() => void>();
-const notifyListeners = () => {
-  listeners.forEach((listener) => {
-    try {
-      listener();
-    } catch (e) {
-      console.error(e);
-    }
-  });
-};
 
 // اعمال داده‌های دریافتی از سرور (Supabase) روی state محلی
 registerApplier((key, data) => {
@@ -976,11 +1074,13 @@ registerApplier((key, data) => {
       const incoming = data as Record<number, ContractDetails>;
       Object.keys(contractDetailsMap).forEach((k) => delete contractDetailsMap[Number(k)]);
       Object.assign(contractDetailsMap, incoming);
+      reconcileScheduledServicesWithContracts(false);
       break;
     }
     default:
       return;
   }
+  reconcileScheduledServicesWithContracts(false);
   // دریافت نسخه جدید نباید نسخه محلی قبلی را بدون پشتیبان از بین ببرد.
   writeLocalStorage(key, data);
   notifyListeners();
@@ -1809,17 +1909,47 @@ export const appStore = {
   },
 
   // SCHEDULED SERVICES
-  getScheduledServices: () => scheduledServices,
+  getScheduledServices: () => {
+    reconcileScheduledServicesWithContracts(false);
+    return scheduledServices;
+  },
   toggleScheduledServiceStatus: (id: string) => {
-    scheduledServices = scheduledServices.map((s) =>
-      s.id === id
-        ? {
-            ...s,
-            status: s.status === "done" ? "pending" : "done",
-            lastUpdated: Date.now(),
-          }
-        : s
-    );
+    let targetService: ScheduledService | undefined;
+    scheduledServices = scheduledServices.map((s) => {
+      if (s.id === id) {
+        const nextStatus = s.status === "done" ? "pending" : "done";
+        targetService = {
+          ...s,
+          status: nextStatus,
+          lastUpdated: Date.now(),
+        };
+        return targetService;
+      }
+      return s;
+    });
+
+    // در صورت تغییر وضعیت، وضعیت ماه مربوطه در جزئیات قرارداد نیز هماهنگ شود
+    if (targetService && targetService.contractId) {
+      const cid = targetService.contractId;
+      const mid = targetService.monthId || 1;
+      const details = appStore.getContractDetails(cid);
+      if (details?.months) {
+        const isDone = targetService.status === "done";
+        const updatedMonths = details.months.map((m) =>
+          m.id === mid
+            ? {
+                ...m,
+                done: isDone,
+                date: isDone ? (targetService!.actualDate || targetService!.date) : undefined,
+                doneBy: isDone ? (targetService!.technician || "محسن امامی برسری") : undefined,
+              }
+            : m
+        );
+        contractDetailsMap[cid] = { ...details, months: updatedMonths };
+        saveStorage("tlift_contract_details", contractDetailsMap);
+      }
+    }
+
     saveStorage("tlift_scheduled_services", scheduledServices);
     notifyListeners();
   },
@@ -2104,7 +2234,10 @@ export function useScheduledServices() {
       listeners.add(callback);
       return () => listeners.delete(callback);
     },
-    () => scheduledServices
+    () => {
+      reconcileScheduledServicesWithContracts(false);
+      return scheduledServices;
+    }
   );
 }
 

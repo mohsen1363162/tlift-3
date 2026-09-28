@@ -47,16 +47,20 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.setInterval(updateServiceWorker, 30 * 60 * 1000);
 }
 
-startGlobalErrorLogging(APP_VERSION);
-// شروع همگام‌سازی ابری (Supabase) — در صورت قطع بودن اینترنت، آفلاین ادامه می‌دهد
-startCloudSync().catch(() => {
-  /* بدون اینترنت یا خطای سرور: اپ به‌صورت آفلاین کار می‌کند */
-});
-// بک‌آپ مستقل روزانه روی هر کامپیوتر و موبایل، حتی هنگام قطعی چندروزه سرور.
-startDailyDeviceBackups();
-startDeviceHeartbeat();
-// مهاجرت تدریجی عکس‌های قدیمی Base64؛ هر اجرا محدود است تا برنامه کند نشود.
-void migrateInlinePhotos().catch(() => { /* در حالت آفلاین اجرای بعدی تلاش می‌کند */ });
+try {
+  startGlobalErrorLogging(APP_VERSION);
+  // شروع همگام‌سازی ابری (Supabase) — در صورت قطع بودن اینترنت، آفلاین ادامه می‌دهد
+  startCloudSync().catch(() => {
+    /* بدون اینترنت یا خطای سرور: اپ به‌صورت آفلاین کار می‌کند */
+  });
+  // بک‌آپ مستقل روزانه روی هر کامپیوتر و موبایل، حتی هنگام قطعی چندروزه سرور.
+  startDailyDeviceBackups();
+  startDeviceHeartbeat();
+  // مهاجرت تدریجی عکس‌های قدیمی Base64؛ هر اجرا محدود است تا برنامه کند نشود.
+  void migrateInlinePhotos().catch(() => { /* در حالت آفلاین اجرای بعدی تلاش می‌کند */ });
+} catch (e) {
+  console.warn("Non-critical background bootstrap failed:", e);
+}
 
 /** صفحه بارگذاری — هنگام بررسی session */
 const LoadingScreen: React.FC = () => (

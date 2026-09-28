@@ -29,7 +29,7 @@ import {
   AlertTriangle,
   SlidersHorizontal,
 } from "lucide-react";
-import { ScheduledService, appStore, useScheduledServices, useStaff, useZones, useContracts } from "../store";
+import { ScheduledService, appStore, useScheduledServices, useStaff, useZones, useContracts, normalizeServiceJalaliDate } from "../store";
 import { Theme } from "../theme";
 import ServiceForm from "../ServiceForm";
 import ContractRibbonBar from "./ContractRibbonBar";
@@ -52,8 +52,8 @@ export default function ScheduleManagementPage({
   const contracts = useContracts();
 
   // Filters
-  const [startDate, setStartDate] = useState("1405/06/01");
-  const [endDate, setEndDate] = useState("1405/06/31");
+  const [selectedMonth, setSelectedMonth] = useState<"all" | "1405/07" | "1405/06">("1405/07");
+  const [selectedStatus, setSelectedStatus] = useState<"all" | "done" | "pending">("all");
   const [selectedTech, setSelectedTech] = useState<string>("all");
   const [selectedCustomer, setSelectedCustomer] = useState<string>("all");
   const [selectedZone, setSelectedZone] = useState<string>("all");
@@ -131,6 +131,12 @@ export default function ScheduleManagementPage({
   // Filtered services
   const filteredServices = useMemo(() => {
     return services.filter((s) => {
+      const normDate = normalizeServiceJalaliDate(s.date);
+      // Month filter
+      if (selectedMonth === "1405/07" && !normDate.startsWith("1405/07")) return false;
+      if (selectedMonth === "1405/06" && !normDate.startsWith("1405/06")) return false;
+      // Status filter
+      if (selectedStatus !== "all" && s.status !== selectedStatus) return false;
       // Tech filter
       if (selectedTech !== "all" && s.technician !== selectedTech) return false;
       // Customer filter
@@ -145,36 +151,23 @@ export default function ScheduleManagementPage({
           s.customerName.toLowerCase().includes(q) ||
           s.contractNo.toLowerCase().includes(q) ||
           s.zone.toLowerCase().includes(q) ||
-          s.technician.toLowerCase().includes(q);
+          s.technician.toLowerCase().includes(q) ||
+          (s.report && s.report.toLowerCase().includes(q));
         if (!match) return false;
       }
       return true;
     });
-  }, [services, selectedTech, selectedCustomer, selectedZone, searchQuery]);
+  }, [services, selectedMonth, selectedStatus, selectedTech, selectedCustomer, selectedZone, searchQuery]);
 
   // Group services by date
   const groupedByDay = useMemo(() => {
     const map: Record<string, ScheduledService[]> = {};
 
-    // Sort grouped dates chronologically
+    // Group dates with normalized format
     filteredServices.forEach((s) => {
-      const day = s.date;
+      const day = normalizeServiceJalaliDate(s.date) || s.date;
       if (!map[day]) map[day] = [];
       map[day].push(s);
-    });
-
-    // Ensure common days are displayed even if filtered to empty
-    const days = [
-      "1405-06-01",
-      "1405-06-02",
-      "1405-06-03",
-      "1405-06-04",
-      "1405-06-05",
-      "1405-06-06",
-      "1405-06-07",
-    ];
-    days.forEach((d) => {
-      if (!map[d]) map[d] = [];
     });
 
     // CRITICAL USER REQUIREMENT:
@@ -388,24 +381,82 @@ export default function ScheduleManagementPage({
       >
         {/* Right side controls (Filters) */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Date range display */}
-          <div
-            className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[11.5px] ${t.input}`}
-          >
-            <span className={t.sub}>از</span>
-            <span className="font-semibold text-amber-400">{startDate}</span>
-            <span className={t.sub}>تا</span>
-            <span className="font-semibold text-amber-400">{endDate}</span>
+          {/* Month selector buttons */}
+          <div className="flex items-center gap-1 rounded bg-black/30 border border-zinc-700/60 p-0.5 text-[11px]">
             <button
               type="button"
-              onClick={() => {
-                setStartDate("1405/06/01");
-                setEndDate("1405/06/31");
-              }}
-              title="پاک‌کردن محدوده تاریخ"
-              className="text-zinc-500 hover:text-zinc-300 mr-1"
+              onClick={() => setSelectedMonth("1405/07")}
+              className={`rounded px-2.5 py-1 font-bold transition cursor-pointer ${
+                selectedMonth === "1405/07"
+                  ? "bg-amber-500 text-black shadow-sm"
+                  : "text-zinc-400 hover:text-white"
+              }`}
             >
-              <X size={12} />
+              مهر ۱۴۰۵ (جاری)
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedMonth("1405/06")}
+              className={`rounded px-2.5 py-1 font-bold transition cursor-pointer ${
+                selectedMonth === "1405/06"
+                  ? "bg-amber-500 text-black shadow-sm"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              شهریور ۱۴۰۵
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedMonth("all")}
+              className={`rounded px-2.5 py-1 font-bold transition cursor-pointer ${
+                selectedMonth === "all"
+                  ? "bg-amber-500 text-black shadow-sm"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              همه ماه‌ها
+            </button>
+          </div>
+
+          {/* Status selector tabs */}
+          <div className="flex items-center gap-1 rounded bg-black/30 border border-zinc-700/60 p-0.5 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setSelectedStatus("all")}
+              className={`flex items-center gap-1 rounded px-2 py-0.5 font-medium transition cursor-pointer ${
+                selectedStatus === "all"
+                  ? "bg-zinc-700 text-white shadow-sm"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <span>همه</span>
+              <span className="font-bold text-amber-400">({totalCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedStatus("done")}
+              className={`flex items-center gap-1 rounded px-2 py-0.5 font-medium transition cursor-pointer ${
+                selectedStatus === "done"
+                  ? "bg-emerald-900/80 text-emerald-200 border border-emerald-600/50 shadow-sm"
+                  : "text-zinc-400 hover:text-emerald-400"
+              }`}
+            >
+              <CheckCircle2 size={11} className="text-emerald-400" />
+              <span>انجام شده</span>
+              <span className="font-bold text-emerald-400">({doneCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedStatus("pending")}
+              className={`flex items-center gap-1 rounded px-2 py-0.5 font-medium transition cursor-pointer ${
+                selectedStatus === "pending"
+                  ? "bg-red-950/80 text-red-200 border border-red-600/50 shadow-sm"
+                  : "text-zinc-400 hover:text-red-400"
+              }`}
+            >
+              <Clock size={11} className="text-red-400" />
+              <span>در انتظار</span>
+              <span className="font-bold text-red-400">({pendingCount})</span>
             </button>
           </div>
 
@@ -561,6 +612,11 @@ export default function ScheduleManagementPage({
                     <span className="rounded bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-zinc-300">
                       {dayItems.length} سرویس
                     </span>
+                    {dayDoneCount > 0 && (
+                      <span className="rounded bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 text-emerald-300 font-bold">
+                        {dayDoneCount} انجام شد
+                      </span>
+                    )}
                     {dayPendingCount > 0 && (
                       <span className="rounded bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-red-300 font-bold">
                         {dayPendingCount} مانده
