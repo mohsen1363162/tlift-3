@@ -29,3 +29,21 @@ if __name__ == "__main__":
     make_zip('dist', [
         'public/public_html.zip'
     ])
+
+    # همچنین ساخت فایل فشردهٔ سورس کد پروژه (بدون node_modules و .git)
+    source_out = 'public/tlift-source-code.zip'
+    exclude_dirs = {'node_modules', '.git', 'dist', 'dev-dist', '.sync-data', '__pycache__'}
+    exclude_extensions = {'.zip', '.tmp', '.log'}
+    tmp_source = source_out + ".tmp"
+    with zipfile.ZipFile(tmp_source, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
+        for root, dirs, files in os.walk('.'):
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            for file in files:
+                if any(file.endswith(ext) for ext in exclude_extensions):
+                    continue
+                full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(full_path, '.')
+                zipf.write(full_path, rel_path)
+    os.replace(tmp_source, source_out)
+    source_kb = round(os.path.getsize(source_out) / 1024)
+    print(f"Created {source_out} ({source_kb} KB)")

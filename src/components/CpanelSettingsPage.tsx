@@ -359,6 +359,43 @@ export default function CpanelSettingsPage({
               </div>
             </div>
           </div>
+
+          {/* Complete Source Code Download Card */}
+          <div className={`rounded-xl border p-6 shadow-sm ${t.card} ${t.border} bg-gradient-to-r from-blue-500/5 via-transparent to-indigo-500/5`}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className={`text-sm font-bold flex items-center gap-2 ${t.text}`}>
+                <Package size={18} className="text-blue-500" />
+                دانلود سورس کامل پروژه (Full Source Code)
+              </h3>
+              <span className="text-[11px] font-mono rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 font-bold">
+                tlift-source-code.zip (~1.4 MB)
+              </span>
+            </div>
+            <p className={`text-xs ${t.sub} leading-relaxed mb-4`}>
+              شامل تمام کدهای فرانت‌اند، کامپوننت‌ها، استورها، فایل‌های پیکربندی TypeScript، Vite، Tailwind و اسکریپت‌ها (آماده برای ادامه توسعه در VS Code یا هر محیط برنامه‌نویسی).
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="/tlift-source-code.zip"
+                download="tlift-source-code.zip"
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow hover:bg-blue-500 active:scale-95 transition"
+              >
+                <Download size={14} />
+                دانلود مستقیم سورس کد (ZIP)
+              </a>
+              <a
+                href="/tlift-source-code.zip"
+                download="tlift-source-code.zip"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 transition"
+              >
+                <ExternalLink size={13} />
+                دانلود در تب جدید
+              </a>
+            </div>
+          </div>
+
         </div>
 
         {/* Sidebar Info */}
