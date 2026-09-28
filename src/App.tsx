@@ -57,6 +57,7 @@ const ChecklistSettingsPage = lazy(() => import("./components/ChecklistSettingsP
 const CpanelSettingsPage = lazy(() => import("./components/CpanelSettingsPage"));
 const TechnicianMobileApp = lazy(() => import("./components/mobile/TechnicianMobileApp"));
 const TechnicianDashboard = lazy(() => import("./components/TechnicianDashboard"));
+const SmartAssistantPage = lazy(() => import("./components/SmartAssistantPage"));
 const AccessManagementPage = lazy(() => import("./components/AccessManagementPage"));
 const CustomerPortalView = lazy(() => import("./components/CustomerPortalView"));
 const TriangleKeyLocationsPage = lazy(() => import("./components/TriangleKeyLocationsPage"));
@@ -97,6 +98,7 @@ type Tab = {
     | "checklist"
     | "cpanel"
     | "technicianDashboard"
+    | "smartAssistant"
     | "accessManagement"
     | "triangleKeyLocations"
     | "serviceReport";
@@ -242,7 +244,8 @@ export default function App() {
   };
 
   const openMenuItem = (label: string) => {
-    if (label === "مدیریت مدیران و دسترسی‌ها") addTab("مدیریت دسترسی‌ها", "accessManagement");
+    if (label === "دستیار هوشمند تلیفت") addTab("دستیار هوشمند", "smartAssistant");
+    else if (label === "مدیریت مدیران و دسترسی‌ها") addTab("مدیریت دسترسی‌ها", "accessManagement");
     else if (["داشبورد سرویس‌کاران", "سرویس‌های انجام‌شده", "ساعات کارکرد", "وضعیت کارهای جاری", "قطعات تحویل‌شده", "قطعات مصرف‌شده", "گزارش عملکرد ماهانه"].includes(label))
       addTab("داشبورد سرویس‌کاران", "technicianDashboard");
     else if (label === "لیست مشتریان") addTab("مشتریان", "customers");
@@ -704,6 +707,8 @@ export default function App() {
               <PartsPage t={t} />
             ) : current?.kind === "technicianDashboard" ? (
               <TechnicianDashboard t={t} />
+            ) : current?.kind === "smartAssistant" ? (
+              <SmartAssistantPage t={t} />
             ) : current?.kind === "accessManagement" ? (
               <AccessManagementPage t={t} />
             ) : current?.kind === "triangleKeyLocations" ? (
