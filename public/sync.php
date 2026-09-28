@@ -11,9 +11,9 @@
  */
 
 define('SYNC_TOKEN', 'tlift-asemansara-1405'); // ← این رمز را عوض کنید
-define('DATA_DIR', __DIR__ . '/api/sync_data');
+define('DATA_DIR', __DIR__ . '/sync_data');
 define('MAX_BODY_BYTES', 8 * 1024 * 1024);
-define('BACKUP_DIR', __DIR__ . '/api/sync_data' . '/backups');
+define('BACKUP_DIR', __DIR__ . '/sync_data' . '/backups');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -79,6 +79,18 @@ if ($method === 'GET') {
     $key = isset($_GET['key']) ? (string)$_GET['key'] : '';
     $prefix = isset($_GET['prefix']) ? (string)$_GET['prefix'] : '';
     $action = isset($_GET['action']) ? (string)$_GET['action'] : '';
+    if ($action === 'health') {
+        $devices = [];
+        foreach (glob(DATA_DIR . '/tlift_device_heartbeat_*.json') ?: [] as $df) {
+            $row = json_decode((string)file_get_contents($df), true);
+            if (is_array($row) && isset($row['data'])) $devices[] = $row['data'];
+        }
+        usort($devices, function($a,$b){ return ($b['lastSeen'] ?? 0) <=> ($a['lastSeen'] ?? 0); });
+        $dates = [];
+        foreach (glob(BACKUP_DIR . '/*', GLOB_ONLYDIR) ?: [] as $dir) $dates[] = basename($dir);
+        rsort($dates);
+        echo json_encode(['ok'=>true,'serverTime'=>date('c'),'writable'=>is_writable(DATA_DIR),'records'=>count(glob(DATA_DIR.'/*.json') ?: []),'diskFree'=>@disk_free_space(DATA_DIR),'diskTotal'=>@disk_total_space(DATA_DIR),'backupCount'=>count($dates),'latestBackup'=>$dates[0] ?? null,'devices'=>$devices], JSON_UNESCAPED_UNICODE); exit;
+    }
     if ($action === 'create_backup') {
         $count = create_daily_full_backup();
         echo json_encode(['ok' => true, 'date' => date('Y-m-d'), 'files' => $count]); exit;
