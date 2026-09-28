@@ -55,6 +55,18 @@ function backup_current_file($key, $file) {
     }
 }
 
+function create_daily_full_backup() {
+    $dayDir = BACKUP_DIR . '/' . date('Y-m-d');
+    if (!is_dir($dayDir)) @mkdir($dayDir, 0755, true);
+    $count = 0;
+    foreach (glob(DATA_DIR . '/*.json') ?: [] as $file) {
+        $target = $dayDir . '/' . basename($file);
+        // نسخه همان روز تازه می‌شود تا آخرین تغییرات آفلاین رسیده نیز محفوظ باشد.
+        if (@copy($file, $target)) $count++;
+    }
+    return $count;
+}
+
 function file_for($key) {
     if (!is_string($key) || !preg_match('/^[A-Za-z0-9_\-]{1,120}$/', $key)) return null;
     return DATA_DIR . '/' . $key . '.json';
@@ -67,6 +79,10 @@ if ($method === 'GET') {
     $key = isset($_GET['key']) ? (string)$_GET['key'] : '';
     $prefix = isset($_GET['prefix']) ? (string)$_GET['prefix'] : '';
     $action = isset($_GET['action']) ? (string)$_GET['action'] : '';
+    if ($action === 'create_backup') {
+        $count = create_daily_full_backup();
+        echo json_encode(['ok' => true, 'date' => date('Y-m-d'), 'files' => $count]); exit;
+    }
     if ($action === 'backups') {
         $dates = [];
         foreach (glob(BACKUP_DIR . '/*', GLOB_ONLYDIR) ?: [] as $dir) $dates[] = basename($dir);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Download,
   Server,
@@ -20,6 +20,7 @@ import { downloadFullBackup, restoreFullBackup } from "../utils/fullBackup";
 import { getContractsServerBackup, getServerBackupData, listServerBackupDates } from "../utils/serverBackups";
 import { appStore, useContracts } from "../store";
 import { pushKey } from "../cloudSync";
+import { createDeviceDailyBackup, downloadDeviceBackup, listDeviceBackupDates, restoreDeviceBackup } from "../utils/dailyBackups";
 
 interface CpanelSettingsPageProps {
   t: Theme;
@@ -38,6 +39,12 @@ export default function CpanelSettingsPage({
   const [serverBackupDates, setServerBackupDates] = useState<string[]>([]);
   const [selectedBackupDate, setSelectedBackupDate] = useState("");
   const [selectedContractId, setSelectedContractId] = useState("");
+  const [deviceBackupDates, setDeviceBackupDates] = useState<string[]>([]);
+  const [selectedDeviceBackup, setSelectedDeviceBackup] = useState("");
+  const refreshDeviceBackups = async () => { const dates = await listDeviceBackupDates(); setDeviceBackupDates(dates); setSelectedDeviceBackup(current => current || dates[0] || ""); };
+  useEffect(() => { void refreshDeviceBackups(); }, []);
+  const makeDeviceBackup = async () => { const result = await createDeviceDailyBackup(true); await refreshDeviceBackups(); onShowToast(`بک‌آپ کامل امروز روی این دستگاه ذخیره شد (${result.date})`); };
+  const restoreSelectedDeviceBackup = async () => { if (!selectedDeviceBackup) return; if (!window.confirm(`اطلاعات دستگاه از بک‌آپ ${selectedDeviceBackup} بازیابی شود؟`)) return; const count = await restoreDeviceBackup(selectedDeviceBackup); onShowToast(`${count.toLocaleString("fa-IR")} بخش بازیابی شد`); setTimeout(()=>location.reload(),1200); };
 
   const handleDataBackup = () => {
     const count = downloadFullBackup();
@@ -200,6 +207,12 @@ export default function CpanelSettingsPage({
           </div>
         </div>
         {backupStatus && <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">{backupStatus}</div>}
+      </div>
+
+      <div className={`mb-6 rounded-2xl border p-5 shadow-sm ${t.card} ${t.border}`}>
+        <h2 className={`flex items-center gap-2 text-base font-bold ${t.text}`}><ShieldCheck size={21} className="text-violet-500"/> پشتیبان خودکار روی همین دستگاه</h2>
+        <p className={`mt-1 text-xs leading-6 ${t.sub}`}>هر روز یک نسخه مستقل داخل مرورگر همین کامپیوتر یا موبایل ذخیره و ۳۰ روز نگهداری می‌شود؛ این نسخه حتی در قطعی کامل سرور قابل استفاده است.</p>
+        <div className="mt-4 flex flex-wrap items-center gap-2"><button onClick={makeDeviceBackup} className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white">بک‌آپ همین حالا</button><select value={selectedDeviceBackup} onChange={e=>setSelectedDeviceBackup(e.target.value)} className={`rounded-xl border px-3 py-2.5 text-xs ${t.input} ${t.border}`}><option value="">انتخاب نسخه دستگاه</option>{deviceBackupDates.map(date=><option key={date}>{date}</option>)}</select><button disabled={!selectedDeviceBackup} onClick={()=>downloadDeviceBackup(selectedDeviceBackup)} className="rounded-xl border border-blue-500 px-4 py-2.5 text-xs font-bold text-blue-500 disabled:opacity-40">دانلود فایل</button><button disabled={!selectedDeviceBackup} onClick={restoreSelectedDeviceBackup} className="rounded-xl border border-amber-500 px-4 py-2.5 text-xs font-bold text-amber-600 disabled:opacity-40">بازیابی کامل دستگاه</button></div>
       </div>
 
       <div className={`mb-6 rounded-2xl border p-5 shadow-sm ${t.card} ${t.border}`}>

@@ -7,6 +7,7 @@ import BrandLogo from './components/BrandLogo';
 import { Toaster } from './components/ui/toaster';
 import './index.css';
 import { startCloudSync } from './cloudSync';
+import { startDailyDeviceBackups } from './utils/dailyBackups';
 
 // بروزرسانی PWA: در هر بار ورود/بازگشت به صفحه، نسخه جدید Service Worker
 // مستقیماً از سرور بررسی می‌شود. پس از فعال‌شدن نسخه تازه فقط یک‌بار صفحه
@@ -45,6 +46,8 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 startCloudSync().catch(() => {
   /* بدون اینترنت یا خطای سرور: اپ به‌صورت آفلاین کار می‌کند */
 });
+// بک‌آپ مستقل روزانه روی هر کامپیوتر و موبایل، حتی هنگام قطعی چندروزه سرور.
+startDailyDeviceBackups();
 
 /** صفحه بارگذاری — هنگام بررسی session */
 const LoadingScreen: React.FC = () => (
