@@ -981,8 +981,8 @@ export default function TechnicianMobileApp({
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
           {back ? (
-            <button type="button" onClick={back} className="rounded-full p-2 hover:bg-gray-100">
-              <ChevronRight size={22} className="text-gray-700" />
+            <button type="button" onClick={back} aria-label="بازگشت" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-50 active:bg-blue-100 hover:bg-gray-100">
+              <ChevronRight size={28} strokeWidth={2.5} className="text-gray-800" />
             </button>
           ) : (
             <button type="button" onClick={() => setDrawer(true)} className="rounded-full p-2 hover:bg-gray-100">
