@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import type { Contract } from "../../data";
 import { formatMoneyInput, parseMoneyInput, rialToTomanWords } from "../../utils/moneyFormat";
+import { storePhoto } from "../../utils/photoStorage";
 import {
   appStore,
   useContracts,
@@ -963,13 +964,17 @@ export default function TechnicianMobileApp({
   };
 
   /* -------------------------------- photos -------------------------------- */
-  const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    files.forEach((f) => {
-      const rd = new FileReader();
-      rd.onload = () => setPhotos((p) => [...p, String(rd.result)]);
-      rd.readAsDataURL(f);
-    });
+  const onPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).slice(0, 8);
+    e.target.value = "";
+    if (!files.length) return;
+    notify("در حال فشرده‌سازی و ذخیره امن عکس‌ها...");
+    try {
+      const compressed = await Promise.all(files.map(compressProjectPhoto));
+      const stored = await Promise.all(compressed.map(storePhoto));
+      setPhotos((current) => [...current, ...stored.map(item => item.value)]);
+      notify(stored.some(item => !item.remote) ? "عکس‌ها روی گوشی محفوظ‌اند و بعداً منتقل می‌شوند" : "عکس‌ها روی سرور ذخیره شدند");
+    } catch { notify("ذخیره عکس انجام نشد؛ دوباره تلاش کنید"); }
   };
 
   /* ---------------------------------------------------------------------- */
@@ -1200,12 +1205,15 @@ export default function TechnicianMobileApp({
         notify("در حال آماده‌سازی و ذخیره عکس‌ها...");
         const remaining = Math.max(0, 30 - (c.photos || []).length);
         if (remaining === 0) return notify("حداکثر ۳۰ عکس مستقیم برای هر پروژه قابل نگهداری است");
-        const added = await Promise.all(Array.from(files).slice(0, Math.min(8, remaining)).map(compressProjectPhoto));
+        const compressed = await Promise.all(Array.from(files).slice(0, Math.min(8, remaining)).map(compressProjectPhoto));
+        const stored = await Promise.all(compressed.map(storePhoto));
+        const added = stored.map(item => item.value);
+        const localCount = stored.filter(item => !item.remote).length;
         const updatedContract = { ...c, photos: [...(c.photos || []), ...added] };
         appStore.updateContract(updatedContract);
         setSelected((current) => current ? { ...current, contract: updatedContract } : current);
         syncNow();
-        notify(`${fa(added.length)} عکس در پرونده پروژه ذخیره شد`);
+        notify(localCount ? `${fa(added.length)} عکس ذخیره شد؛ ${fa(localCount)} عکس پس از اتصال سرور منتقل می‌شود` : `${fa(added.length)} عکس به‌صورت فایل امن روی سرور ذخیره شد`);
       } catch {
         notify("ذخیره عکس انجام نشد؛ دوباره تلاش کنید");
       }

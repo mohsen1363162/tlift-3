@@ -8,6 +8,7 @@ import { Toaster } from './components/ui/toaster';
 import './index.css';
 import { startCloudSync } from './cloudSync';
 import { startDailyDeviceBackups } from './utils/dailyBackups';
+import { migrateInlinePhotos } from './utils/photoStorage';
 
 // بروزرسانی PWA: در هر بار ورود/بازگشت به صفحه، نسخه جدید Service Worker
 // مستقیماً از سرور بررسی می‌شود. پس از فعال‌شدن نسخه تازه فقط یک‌بار صفحه
@@ -48,6 +49,8 @@ startCloudSync().catch(() => {
 });
 // بک‌آپ مستقل روزانه روی هر کامپیوتر و موبایل، حتی هنگام قطعی چندروزه سرور.
 startDailyDeviceBackups();
+// مهاجرت تدریجی عکس‌های قدیمی Base64؛ هر اجرا محدود است تا برنامه کند نشود.
+void migrateInlinePhotos().catch(() => { /* در حالت آفلاین اجرای بعدی تلاش می‌کند */ });
 
 /** صفحه بارگذاری — هنگام بررسی session */
 const LoadingScreen: React.FC = () => (
