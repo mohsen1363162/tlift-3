@@ -1,4 +1,4 @@
-const TOKEN = (import.meta.env.VITE_SYNC_TOKEN as string | undefined) || "tlift-asemansara-1405";
+import { getDeviceToken } from "./deviceAuth";
 const endpoints = () => {
   const custom = import.meta.env.VITE_SYNC_API as string | undefined;
   if (custom) return [custom];
@@ -10,7 +10,7 @@ async function request(params: Record<string, string>) {
   for (const endpoint of endpoints()) {
     try {
       const url = new URL(endpoint, location.origin);
-      Object.entries({ ...params, token: TOKEN }).forEach(([key, value]) => url.searchParams.set(key, value));
+      Object.entries({ ...params, token: await getDeviceToken() }).forEach(([key, value]) => url.searchParams.set(key, value));
       const response = await fetch(url.toString());
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();

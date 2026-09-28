@@ -4,6 +4,7 @@
  * با امکان تنظیم فاصله زمانی همگام‌سازی توسط کاربر
  */
 import { supabase } from "@/integrations/supabase/client";
+import { getDeviceToken } from "./utils/deviceAuth";
 
 export type SyncStatus = "idle" | "syncing" | "online" | "offline" | "error";
 
@@ -284,7 +285,8 @@ async function apiUpsert(key: string, data: unknown, updated_at: string) {
   let lastError: unknown;
   for (const endpoint of syncApiCandidates()) {
     try {
-      const res = await withTimeout(fetch(`${endpoint}?token=${encodeURIComponent(SYNC_TOKEN)}`, {
+      const authToken = await getDeviceToken();
+      const res = await withTimeout(fetch(`${endpoint}?token=${encodeURIComponent(authToken)}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, data, updated_at, base_updated_at: loadMeta()[key] || null }),
       }));
@@ -307,7 +309,8 @@ async function apiSelectPrefix(prefix: string): Promise<{ key: string; data: unk
   let lastError: unknown;
   for (const endpoint of syncApiCandidates()) {
     try {
-      const res = await withTimeout(fetch(`${endpoint}?prefix=${encodeURIComponent(prefix)}&token=${encodeURIComponent(SYNC_TOKEN)}`));
+      const authToken = await getDeviceToken();
+      const res = await withTimeout(fetch(`${endpoint}?prefix=${encodeURIComponent(prefix)}&token=${encodeURIComponent(authToken)}`));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rows = await res.json();
       return Array.isArray(rows) ? rows : [];

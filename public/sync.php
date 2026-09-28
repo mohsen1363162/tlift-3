@@ -26,18 +26,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// --- احراز هویت با توکن مشترک ---
+// --- احراز هویت توکن مستقل دستگاه (با سازگاری موقت توکن قدیمی) ---
 $token = isset($_GET['token']) ? (string)$_GET['token'] : '';
-if ($token === '' && isset($_SERVER['HTTP_AUTHORIZATION'])) {
-    $token = trim(str_ireplace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']));
-}
-if (!hash_equals(SYNC_TOKEN, $token)) {
-    http_response_code(401);
-    echo json_encode(['error' => 'invalid token']);
-    exit;
-}
-
+if ($token === '' && isset($_SERVER['HTTP_AUTHORIZATION'])) $token = trim(str_ireplace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']));
 if (!is_dir(DATA_DIR)) { @mkdir(DATA_DIR, 0755, true); }
+$tokenFile = DATA_DIR . '/device_tokens.json';
+$tokens = is_file($tokenFile) ? (json_decode((string)file_get_contents($tokenFile), true) ?: []) : [];
+$actionEarly = isset($_GET['action']) ? (string)$_GET['action'] : '';
+if ($actionEarly === 'register_device' && hash_equals(SYNC_TOKEN, $token)) {
+    $body = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    $deviceId = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($body['deviceId'] ?? ''));
+    if ($deviceId === '') { http_response_code(400); echo json_encode(['error'=>'bad device']); exit; }
+    $rawToken = bin2hex(random_bytes(32));
+    $tokens[$deviceId] = ['hash'=>hash('sha256',$rawToken),'name'=>mb_substr((string)($body['name'] ?? 'دستگاه'),0,80),'createdAt'=>time(),'expiresAt'=>strtotime('+90 days'),'revoked'=>false];
+    file_put_contents($tokenFile, json_encode($tokens, JSON_UNESCAPED_UNICODE), LOCK_EX);
+    echo json_encode(['ok'=>true,'token'=>$rawToken,'expiresAt'=>$tokens[$deviceId]['expiresAt']]); exit;
+}
+$authorized = hash_equals(SYNC_TOKEN, $token);
+if (!$authorized && $token !== '') foreach ($tokens as $row) { if (empty($row['revoked']) && ($row['expiresAt'] ?? 0) > time() && hash_equals((string)$row['hash'], hash('sha256',$token))) { $authorized=true; break; } }
+if (!$authorized) { http_response_code(401); echo json_encode(['error'=>'invalid or expired device token']); exit; }
+
 if (!is_dir(BACKUP_DIR)) { @mkdir(BACKUP_DIR, 0755, true); }
 
 function backup_current_file($key, $file) {

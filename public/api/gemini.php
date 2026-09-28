@@ -6,7 +6,14 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 define('APP_TOKEN', 'tlift-asemansara-1405');
 $token = $_GET['token'] ?? str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION'] ?? '');
-if (!hash_equals(APP_TOKEN, (string)$token)) { http_response_code(401); echo json_encode(['error'=>'unauthorized']); exit; }
+$authorized = hash_equals(APP_TOKEN, (string)$token);
+$tokenFile = __DIR__ . '/sync_data/device_tokens.json';
+$tokens = is_file($tokenFile) ? (json_decode((string)file_get_contents($tokenFile), true) ?: []) : [];
+if (!$authorized && $token !== '') foreach ($tokens as $row) { if (empty($row['revoked']) && ($row['expiresAt'] ?? 0) > time() && hash_equals((string)$row['hash'], hash('sha256',(string)$token))) { $authorized=true; break; } }
+if (!$authorized) { http_response_code(401); echo json_encode(['error'=>'unauthorized']); exit; }
+// محدودیت ساده: حداکثر ۳۰ درخواست Gemini در ساعت برای هر توکن
+$rateFile = sys_get_temp_dir().'/tlift_gemini_'.hash('sha256',(string)$token).'.json'; $rate=is_file($rateFile)?(json_decode((string)file_get_contents($rateFile),true)?:[]):[]; $rate=array_values(array_filter($rate,function($x){return $x>time()-3600;}));
+if(count($rate)>=30){http_response_code(429);echo json_encode(['error'=>'rate_limit']);exit;} $rate[]=time(); file_put_contents($rateFile,json_encode($rate),LOCK_EX);
 $body = json_decode(file_get_contents('php://input'), true) ?: [];
 $privateDir = __DIR__ . '/private';
 $keyFile = $privateDir . '/gemini.key';

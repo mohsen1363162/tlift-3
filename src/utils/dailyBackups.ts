@@ -1,5 +1,6 @@
 import { createFullBackup, type FullBackupFile } from "./fullBackup";
 import { pushKey } from "../cloudSync";
+import { getDeviceToken } from "./deviceAuth";
 
 const DB_NAME = "tlift-device-backups";
 const STORE = "daily";
@@ -54,7 +55,7 @@ export async function downloadDeviceBackup(date: string) {
   const a = document.createElement("a"); a.href = url; a.download = `tlift-device-backup-${date}.json`; a.click(); URL.revokeObjectURL(url);
 }
 export async function requestServerDailyBackup() {
-  const token = (import.meta.env.VITE_SYNC_TOKEN as string | undefined) || "tlift-asemansara-1405";
+  const token = await getDeviceToken();
   const urls = location.hostname.includes("emami-asemansara.ir") ? ["/api/sync.php", "/sync.php"] : ["https://emami-asemansara.ir/api/sync.php", "https://emami-asemansara.ir/sync.php"];
   for (const endpoint of urls) { try { const url = new URL(endpoint, location.origin); url.searchParams.set("action","create_backup"); url.searchParams.set("token",token); const response = await fetch(url.toString()); if (response.ok) return true; } catch { /* local backup remains safe */ } }
   return false;

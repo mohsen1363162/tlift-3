@@ -1,6 +1,5 @@
 import { pushKey } from "../cloudSync";
-
-const TOKEN = (import.meta.env.VITE_SYNC_TOKEN as string | undefined) || "tlift-asemansara-1405";
+import { getDeviceToken } from "./deviceAuth";
 const PROD = "https://emami-asemansara.ir";
 const endpoints = () => location.hostname === "emami-asemansara.ir" || location.hostname === "www.emami-asemansara.ir" ? ["/api/photos.php"] : [`${PROD}/api/photos.php`];
 export async function storePhoto(dataUrl: string): Promise<{ value: string; remote: boolean }> {
@@ -8,7 +7,7 @@ export async function storePhoto(dataUrl: string): Promise<{ value: string; remo
   if (!navigator.onLine) return { value: dataUrl, remote: false };
   for (const endpoint of endpoints()) {
     try {
-      const response = await fetch(`${endpoint}?token=${encodeURIComponent(TOKEN)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: dataUrl }) });
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${await getDeviceToken()}` }, body: JSON.stringify({ data: dataUrl }) });
       if (!response.ok) continue;
       const result = await response.json();
       if (typeof result.url === "string") return { value: result.url.startsWith("http") ? result.url : `${PROD}${result.url}`, remote: true };
